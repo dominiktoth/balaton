@@ -1,74 +1,111 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
     provider = "prisma-client-js"
 }
 
 datasource db {
-    provider = "postgresql"
-    // NOTE: When using mysql or sqlserver, uncomment the @db.Text annotations in model Account below
-    // Further reading:
-    // https://next-auth.js.org/adapters/prisma#create-the-prisma-schema
-    // https://www.prisma.io/docs/reference/api-reference/prisma-schema-reference#string
+    provider = "postgresql" // or "mysql", "sqlite"
     url      = env("DATABASE_URL")
 }
 
-model Post {
-    id        Int      @id @default(autoincrement())
-    name      String
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
-
-    createdBy   User   @relation(fields: [createdById], references: [id])
-    createdById String
-
-    @@index([name])
+model User {
+    id            String    @id @default(uuid())
+    name          String?
+    email         String?   @unique
+    emailVerified DateTime?
+    password      String?
+    role          Role
+    store         Store?    @relation(fields: [storeId], references: [id])
+    storeId       String?
+    orders        Order[]
+    accounts      Account[]
+    sessions      Session[]
+    createdAt     DateTime  @default(now())
+    updatedAt     DateTime  @updatedAt
 }
 
-// Necessary for Next auth
+model Store {
+    id        String    @id @default(uuid())
+    name      String
+    products  Product[]
+    expenses  Expense[]
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    User      User[]
+    Order     Order[]
+}
+
+model Product {
+    id        String      @id @default(uuid())
+    name      String
+    price     Float
+    stock     Int
+    store     Store       @relation(fields: [storeId], references: [id])
+    storeId   String
+    createdAt DateTime    @default(now())
+    updatedAt DateTime    @updatedAt
+    OrderItem OrderItem[]
+}
+
+model Expense {
+    id        String   @id @default(uuid())
+    amount    Float
+    date      DateTime @default(now())
+    store     Store    @relation(fields: [storeId], references: [id])
+    storeId   String
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
+
+model Order {
+    id         String      @id @default(uuid())
+    user       User        @relation(fields: [userId], references: [id])
+    userId     String
+    store      Store       @relation(fields: [storeId], references: [id])
+    storeId    String
+    orderItems OrderItem[]
+    total      Float
+    createdAt  DateTime    @default(now())
+    updatedAt  DateTime    @updatedAt
+}
+
+model OrderItem {
+    id        String  @id @default(uuid())
+    order     Order   @relation(fields: [orderId], references: [id])
+    orderId   String
+    product   Product @relation(fields: [productId], references: [id])
+    productId String
+    quantity  Int
+    price     Float // snapshot of product price at order time
+}
+
+enum Role {
+    ADMIN
+    STORE_MANAGER
+    EMPLOYEE
+}
+
 model Account {
-    id                       String  @id @default(cuid())
-    userId                   String
-    type                     String
-    provider                 String
-    providerAccountId        String
-    refresh_token            String? // @db.Text
-    access_token             String? // @db.Text
-    expires_at               Int?
-    token_type               String?
-    scope                    String?
-    id_token                 String? // @db.Text
-    session_state            String?
-    user                     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-    refresh_token_expires_in Int?
+    id                String  @id @default(uuid())
+    userId            String
+    type              String
+    provider          String
+    providerAccountId String
+    refresh_token     String? @db.Text
+    access_token      String? @db.Text
+    expires_at        Int?
+    token_type        String?
+    scope             String?
+    id_token          String? @db.Text
+    session_state     String?
+    user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
     @@unique([provider, providerAccountId])
 }
 
 model Session {
-    id           String   @id @default(cuid())
+    id           String   @id @default(uuid())
     sessionToken String   @unique
     userId       String
     expires      DateTime
     user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model User {
-    id            String    @id @default(cuid())
-    name          String?
-    email         String?   @unique
-    emailVerified DateTime?
-    image         String?
-    accounts      Account[]
-    sessions      Session[]
-    posts         Post[]
-}
-
-model VerificationToken {
-    identifier String
-    token      String   @unique
-    expires    DateTime
-
-    @@unique([identifier, token])
 }
