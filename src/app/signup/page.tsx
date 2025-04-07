@@ -31,6 +31,9 @@ export default function RegisterPage() {
       setSuccess("Check your email to confirm your registration.")
       setEmail("")
       setPassword("")
+      setTimeout(() => {
+        router.push("/login")
+      }, 1000)
     }
   }
 

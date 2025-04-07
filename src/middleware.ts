@@ -9,7 +9,7 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     // Apply to all routes EXCEPT these:
-    '/',
+    '/signup',
     '/((?!_next/static|_next/image|favicon.ico|api).*)',
   ],
 }
