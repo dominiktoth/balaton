@@ -8,8 +8,8 @@ import { ChartAreaInteractive } from "~/components/chart-area-interactive"
 import { supabase } from "~/server/auth/supabaseClient"
 
 export default  function DashboardPage() {
-  const [selectedStoreId, setSelectedStoreId] = useState<string>("all")
-  const { data: stores, isLoading } = api.store.getAllStores.useQuery()
+  const [selectedStoreId, setSelectedStoreId] = useState<string>("all");
+  const { data: stores, isLoading } = api.store.getAllStores.useQuery();
 
   
 

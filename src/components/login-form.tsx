@@ -8,6 +8,7 @@ import { Card, CardContent } from "~/components/ui/card"
 import { Input } from "~/components/ui/input"
 import { Label } from "~/components/ui/label"
 import { supabase } from "~/server/auth/supabaseClient"
+import Image from "next/image"
 
 export function LoginForm({
   className,
@@ -108,9 +109,10 @@ export function LoginForm({
             </div>
           </form>
 
-          <div className=" md:block bg-muted h-full">
-            <img
+          <div className=" md:block bg-muted h-full relative">
+            <Image
               src="/login.png"
+              fill
               alt="Image"
               className="object-cover h-full w-full h-full"
             />
