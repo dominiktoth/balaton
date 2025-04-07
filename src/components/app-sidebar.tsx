@@ -10,6 +10,7 @@ import {
   IconShoppingCart,
   IconToolsKitchen2,
   IconBrandCashapp,
+  IconBeach,
 } from "@tabler/icons-react"
 
 import { NavMain } from "~/components/nav-main"
@@ -35,22 +36,22 @@ const data = {
   navMain: [
     {
       title: "Dashboard",
-      url: "#",
+      url: "/dashboard",
       icon: IconDashboard,
     },
     {
       title: "Üzletek",
-      url: "#",
+      url: "/dashboard/stores",
       icon: IconShoppingCart,
     },
     {
       title: "Termékek",
-      url: "#",
+      url: "/dashboard/products",
       icon: IconToolsKitchen2,
     }, 
     {
       title: "Kiadások",
-      url: "#",
+      url: "/dashboard/expenses",
       icon: IconBrandCashapp,
     },
 
@@ -118,8 +119,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               className="data-[slot=sidebar-menu-button]:!p-1.5"
             >
               <a href="#">
-                <IconInnerShadowTop className="!size-5" />
-                <span className="text-base font-semibold">Acme Inc.</span>
+                <IconBeach className="!size-5 text-blue-400" />
+                <span className="text-base font-semibold">Balaton Admin</span>
               </a>
             </SidebarMenuButton>
           </SidebarMenuItem>

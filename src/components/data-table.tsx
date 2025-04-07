@@ -35,11 +35,11 @@ import {
   IconTrendingUp,
 } from "@tabler/icons-react"
 import {
-  ColumnDef,
-  ColumnFiltersState,
-  Row,
-  SortingState,
-  VisibilityState,
+  type ColumnDef,
+  type ColumnFiltersState,
+  type Row,
+  type SortingState,
+  type VisibilityState,
   flexRender,
   getCoreRowModel,
   getFacetedRowModel,
@@ -57,7 +57,7 @@ import { useIsMobile } from "~/hooks/use-mobile"
 import { Badge } from "~/components/ui/badge"
 import { Button } from "~/components/ui/button"
 import {
-  ChartConfig,
+  type ChartConfig,
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,

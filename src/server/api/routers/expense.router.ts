@@ -1,9 +1,9 @@
 import { z } from 'zod';
-import { createTRPCRouter, publicProcedure } from '../trpc';
+import { createTRPCRouter, protectedProcedure } from '../trpc';
 import { createExpense, deleteExpense, getAllExpenses } from '../services/expenses.services';
 
 export const expenseRouter = createTRPCRouter({
-  createExpense: publicProcedure
+  createExpense: protectedProcedure
     .input(z.object({
       amount: z.number(),
       storeId: z.string(),
@@ -12,11 +12,11 @@ export const expenseRouter = createTRPCRouter({
       return createExpense(input.amount, input.storeId);
     }),
 
-  getAllExpenses: publicProcedure.query(async () => {
+  getAllExpenses: protectedProcedure.query(async () => {
     return getAllExpenses();
   }),
 
-  deleteExpense: publicProcedure
+  deleteExpense: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input }) => {
       return deleteExpense(input.id);

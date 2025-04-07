@@ -1,9 +1,9 @@
 import { z } from 'zod';
-import { createTRPCRouter, publicProcedure } from '../trpc';
+import { createTRPCRouter, protectedProcedure } from '../trpc';
 import { productService } from '../services/product.services';
 
 export const productRouter = createTRPCRouter({
-  createProduct: publicProcedure
+  createProduct: protectedProcedure
     .input(z.object({
       name: z.string(),
       price: z.number(),
@@ -11,7 +11,21 @@ export const productRouter = createTRPCRouter({
       storeId: z.string(),
     }))
     .mutation(async ({ input }) => {
-      return productService.createProduct(input.name, input.price, input.stock, input.storeId);
+      return productService.createProduct(
+        input.name,
+        input.price,
+        input.stock,
+        input.storeId
+      );
     }),
-  // Define other product-related procedures here
+
+  getAllProducts: protectedProcedure.query(async () => {
+    return productService.getAllProducts();
+  }),
+
+  deleteProduct: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input }) => {
+      return productService.deleteProduct(input.id);
+    }),
 });

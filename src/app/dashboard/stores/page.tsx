@@ -48,27 +48,29 @@ const StoresPage = () => {
   return (
     <div className="max-w-xl mx-auto py-10">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Stores</h1>
+        <h1 className="text-3xl font-bold">Boltok</h1>
         <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
           <DialogTrigger asChild>
-            <Button>Add Store</Button>
+            <Button>Új bolt hozzáadása</Button>
           </DialogTrigger>
           <DialogContent>
             <form onSubmit={handleCreate}>
               <DialogHeader>
-                <DialogTitle>Create a New Store</DialogTitle>
-                <DialogDescription>Enter the name of your store.</DialogDescription>
+                <DialogTitle>Új bolt létrehozása</DialogTitle>
+                <DialogDescription>
+                  Add meg az új bolt nevét.
+                </DialogDescription>
               </DialogHeader>
               <Input
                 type="text"
                 value={storeName}
                 onChange={(e) => setStoreName(e.target.value)}
-                placeholder="Store Name"
+                placeholder="Bolt neve"
                 className="mt-4"
               />
               <DialogFooter className="mt-4">
                 <Button type="submit" disabled={isCreating}>
-                  {isCreating ? 'Creating...' : 'Create'}
+                  {isCreating ? 'Létrehozás...' : 'Létrehozás'}
                 </Button>
               </DialogFooter>
             </form>
@@ -76,7 +78,9 @@ const StoresPage = () => {
         </Dialog>
       </div>
 
-      {isFetching && <p className="text-muted-foreground text-sm mb-4">Loading stores...</p>}
+      {isFetching && (
+        <p className="text-muted-foreground text-sm mb-4">Boltok betöltése...</p>
+      )}
 
       <ul className="space-y-2">
         {stores?.map((store) => (
@@ -85,21 +89,24 @@ const StoresPage = () => {
             className="flex justify-between items-center border rounded p-4"
           >
             <span>{store.name}</span>
-            <Dialog open={!!storeToDelete && storeToDelete.id === store.id} onOpenChange={(open) => !open && setStoreToDelete(null)}>
+            <Dialog
+              open={!!storeToDelete && storeToDelete.id === store.id}
+              onOpenChange={(open) => !open && setStoreToDelete(null)}
+            >
               <DialogTrigger asChild>
                 <Button
                   variant="destructive"
                   size="sm"
                   onClick={() => setStoreToDelete(store)}
                 >
-                  Delete
+                  Törlés
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-w-sm">
                 <DialogHeader>
-                  <DialogTitle>Delete Store</DialogTitle>
+                  <DialogTitle>Bolt törlése</DialogTitle>
                   <DialogDescription>
-                    Are you sure you want to delete <b>{store.name}</b>?
+                    Biztosan törölni szeretnéd a <b>{store.name}</b> nevű boltot?
                   </DialogDescription>
                 </DialogHeader>
                 <DialogFooter>
@@ -107,7 +114,7 @@ const StoresPage = () => {
                     variant="secondary"
                     onClick={() => setStoreToDelete(null)}
                   >
-                    Cancel
+                    Mégse
                   </Button>
                   <Button
                     variant="destructive"
@@ -115,7 +122,7 @@ const StoresPage = () => {
                       deleteStore({ id: store.id });
                     }}
                   >
-                    Delete
+                    Törlés
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -124,7 +131,7 @@ const StoresPage = () => {
         ))}
         {stores?.length === 0 && !isFetching && (
           <li className="text-muted-foreground text-sm">
-            No stores available. Create one to get started!
+            Nincs elérhető bolt. Hozz létre egyet a kezdéshez!
           </li>
         )}
       </ul>
