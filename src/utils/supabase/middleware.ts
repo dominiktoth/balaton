@@ -16,7 +16,7 @@ export async function updateSession(request: NextRequest) {
   url.pathname = '/dashboard'
 
 
-  if(request.nextUrl.pathname == ('/')){
+  if(request.nextUrl.pathname == ('/')|| request.nextUrl.pathname == ('')) {
     return NextResponse.redirect(url)
 
   }
