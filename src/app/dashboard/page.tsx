@@ -1,17 +1,14 @@
-"use client"
+'use client'
+import { useState } from "react";
+import { api } from "~/trpc/react";
+import { Tabs, TabsList, TabsTrigger } from "~/components/ui/tabs";
+import { SectionCards } from "~/components/section-cards";
+import { ChartAreaInteractive } from "~/components/chart-area-interactive";
+import { supabase } from "~/server/auth/supabaseClient";
 
-import { useEffect, useState } from "react"
-import { api } from "~/trpc/react"
-import { Tabs, TabsList, TabsTrigger } from "~/components/ui/tabs"
-import { SectionCards } from "~/components/section-cards"
-import { ChartAreaInteractive } from "~/components/chart-area-interactive"
-import { supabase } from "~/server/auth/supabaseClient"
-
-export default  function DashboardPage() {
+export default function DashboardPage() {
   const [selectedStoreId, setSelectedStoreId] = useState<string>("all");
   const { data: stores, isLoading } = api.store.getAllStores.useQuery();
-
-  
 
   return (
     <div className="flex flex-1 flex-col">
@@ -22,11 +19,17 @@ export default  function DashboardPage() {
             onValueChange={(val) => setSelectedStoreId(val)}
             className="px-4 lg:px-6"
           >
-            <TabsList className="overflow-x-auto">
-              <TabsTrigger value="all">Összes bolt</TabsTrigger>
+            <TabsList className="flex w-full overflow-x-auto py-2 md:py-4 ">
+              <TabsTrigger value="all" className="min-w-max px-4 py-2">
+                Összes bolt
+              </TabsTrigger>
               {!isLoading &&
                 stores?.map((store) => (
-                  <TabsTrigger key={store.id} value={store.id}>
+                  <TabsTrigger
+                    key={store.id}
+                    value={store.id}
+                    className="min-w-max px-4 py-2"
+                  >
                     {store.name}
                   </TabsTrigger>
                 ))}
@@ -41,5 +44,5 @@ export default  function DashboardPage() {
         </div>
       </div>
     </div>
-  )
+  );
 }

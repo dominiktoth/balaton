@@ -1,10 +1,10 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { Area, AreaChart, CartesianGrid, XAxis } from "recharts"
-import { api } from "~/trpc/react"
+import * as React from "react";
+import { Area, AreaChart, CartesianGrid, XAxis } from "recharts";
+import { api } from "~/trpc/react";
 
-import { useIsMobile } from "~/hooks/use-mobile"
+import { useIsMobile } from "~/hooks/use-mobile";
 import {
   Card,
   CardAction,
@@ -12,81 +12,76 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "~/components/ui/card"
+} from "~/components/ui/card";
 import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-} from "~/components/ui/chart"
+} from "~/components/ui/chart";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "~/components/ui/select"
-import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from "~/components/ui/toggle-group"
+} from "~/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "~/components/ui/toggle-group";
 
 export function ChartAreaInteractive({ storeId }: { storeId: string }) {
-  const isMobile = useIsMobile()
-  const [timeRange, setTimeRange] = React.useState("90d")
+  const isMobile = useIsMobile();
+  const [timeRange, setTimeRange] = React.useState("90d");
 
-  const { data: expenses } = api.expense.getAllExpenses.useQuery()
+  const { data: expenses } = api.expense.getAllExpenses.useQuery();
 
   React.useEffect(() => {
     if (isMobile) {
-      setTimeRange("7d")
+      setTimeRange("7d");
     }
-  }, [isMobile])
+  }, [isMobile]);
 
   const filteredExpenses = React.useMemo(() => {
-    if (!expenses) return []
+    if (!expenses) return [];
 
-    const referenceDate = new Date()
-    const startDate = new Date(referenceDate)
+    const referenceDate = new Date();
+    const startDate = new Date(referenceDate);
 
-    const days = timeRange === "7d" ? 7 : timeRange === "30d" ? 30 : 90
-    startDate.setDate(referenceDate.getDate() - days)
+    const days = timeRange === "7d" ? 7 : timeRange === "30d" ? 30 : 90;
+    startDate.setDate(referenceDate.getDate() - days);
 
     return expenses
       .filter((e) => {
-        const date = new Date(e.date)
+        const date = new Date(e.date);
         return (
-          date >= startDate &&
-          (storeId === "all" || e.storeId === storeId)
-        )
+          date >= startDate && (storeId === "all" || e.storeId === storeId)
+        );
       })
       .map((e) => ({
         date: new Date(e.date).toISOString().split("T")[0],
         amount: e.amount,
-      }))
-  }, [expenses, storeId, timeRange])
+      }));
+  }, [expenses, storeId, timeRange]);
 
   const chartData = React.useMemo(() => {
-    const result: Record<string, number> = {}
+    const result: Record<string, number> = {};
 
     for (const e of filteredExpenses) {
       if (e.date) {
-        result[e.date] = (result[e.date] ?? 0) + e.amount
+        result[e.date] = (result[e.date] ?? 0) + e.amount;
       }
     }
 
     return Object.entries(result)
       .map(([date, amount]) => ({ date, amount }))
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-  }, [filteredExpenses])
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }, [filteredExpenses]);
 
   return (
     <Card className="@container/card">
       <CardHeader>
         <CardTitle>Kiadások alakulása</CardTitle>
         <CardDescription>
-          {storeId === "all"
-            ? "Összes bolt"
-            : `Bolt azonosító: ${storeId}`} – Utolsó {timeRange}
+          {storeId === "all" ? "Összes bolt" : `Bolt azonosító: ${storeId}`} –
+          Utolsó {timeRange}
         </CardDescription>
         <CardAction>
           <ToggleGroup
@@ -145,7 +140,8 @@ export function ChartAreaInteractive({ storeId }: { storeId: string }) {
               axisLine={false}
               tickMargin={8}
               minTickGap={32}
-              tickFormatter={(value: string | number | Date) =>
+              interval="preserveStartEnd" // vagy "equidistantPreserveStart"
+              tickFormatter={(value) =>
                 new Date(value).toLocaleDateString("hu-HU", {
                   month: "short",
                   day: "numeric",
@@ -177,5 +173,5 @@ export function ChartAreaInteractive({ storeId }: { storeId: string }) {
         </ChartContainer>
       </CardContent>
     </Card>
-  )
+  );
 }
