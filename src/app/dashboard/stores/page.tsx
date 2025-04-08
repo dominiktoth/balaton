@@ -46,7 +46,7 @@ const StoresPage = () => {
   };
 
   return (
-    <div className="max-w-xl mx-auto py-10">
+    <div className="max-w-xl mx-auto py-10 px-4 md:px-0">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Boltok</h1>
         <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>

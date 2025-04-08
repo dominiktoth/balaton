@@ -59,7 +59,7 @@ const ProductsPage = () => {
   };
 
   return (
-    <div className="max-w-2xl mx-auto py-10">
+    <div className="max-w-2xl mx-auto py-10 px-4 md:px-0">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Termékek</h1>
         <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
