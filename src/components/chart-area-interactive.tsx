@@ -1,10 +1,8 @@
-"use client";
+"use client"
 
-import * as React from "react";
-import { Area, AreaChart, CartesianGrid, XAxis } from "recharts";
-import { api } from "~/trpc/react";
-
-import { useIsMobile } from "~/hooks/use-mobile";
+import * as React from "react"
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts"
+import { useIsMobile } from "~/hooks/use-mobile"
 import {
   Card,
   CardAction,
@@ -12,68 +10,71 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "~/components/ui/card";
+} from "~/components/ui/card"
 import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-} from "~/components/ui/chart";
+} from "~/components/ui/chart"
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "~/components/ui/select";
-import { ToggleGroup, ToggleGroupItem } from "~/components/ui/toggle-group";
+} from "~/components/ui/select"
+import { ToggleGroup, ToggleGroupItem } from "~/components/ui/toggle-group"
 
-export function ChartAreaInteractive({ storeId }: { storeId: string }) {
-  const isMobile = useIsMobile();
-  const [timeRange, setTimeRange] = React.useState("90d");
-
-  const { data: expenses } = api.expense.getAllExpenses.useQuery();
+export function ChartAreaInteractive({
+  storeId,
+  expenses = [],
+}: {
+  storeId: string
+  expenses: { date: string; storeId: string; amount: number }[]
+}) {
+  const isMobile = useIsMobile()
+  const [timeRange, setTimeRange] = React.useState("90d")
 
   React.useEffect(() => {
     if (isMobile) {
-      setTimeRange("7d");
+      setTimeRange("7d")
     }
-  }, [isMobile]);
+  }, [isMobile])
 
   const filteredExpenses = React.useMemo(() => {
-    if (!expenses) return [];
+    const referenceDate = new Date()
+    const startDate = new Date(referenceDate)
 
-    const referenceDate = new Date();
-    const startDate = new Date(referenceDate);
-
-    const days = timeRange === "7d" ? 7 : timeRange === "30d" ? 30 : 90;
-    startDate.setDate(referenceDate.getDate() - days);
+    const days = timeRange === "7d" ? 7 : timeRange === "30d" ? 30 : 90
+    startDate.setDate(referenceDate.getDate() - days)
 
     return expenses
       .filter((e) => {
-        const date = new Date(e.date);
+        const date = new Date(e.date)
         return (
-          date >= startDate && (storeId === "all" || e.storeId === storeId)
-        );
+          date >= startDate &&
+          (storeId === "all" || e.storeId === storeId)
+        )
       })
       .map((e) => ({
         date: new Date(e.date).toISOString().split("T")[0],
         amount: e.amount,
-      }));
-  }, [expenses, storeId, timeRange]);
+      }))
+  }, [expenses, storeId, timeRange])
 
   const chartData = React.useMemo(() => {
-    const result: Record<string, number> = {};
+    const result: Record<string, number> = {}
 
     for (const e of filteredExpenses) {
       if (e.date) {
-        result[e.date] = (result[e.date] ?? 0) + e.amount;
+        result[e.date] = (result[e.date] ?? 0) + e.amount
       }
     }
 
     return Object.entries(result)
       .map(([date, amount]) => ({ date, amount }))
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  }, [filteredExpenses]);
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+  }, [filteredExpenses])
 
   return (
     <Card className="@container/card">
@@ -118,60 +119,50 @@ export function ChartAreaInteractive({ storeId }: { storeId: string }) {
           }}
           className="aspect-auto h-[250px] w-full"
         >
-          <AreaChart data={chartData}>
-            <defs>
-              <linearGradient id="fillExpense" x1="0" y1="0" x2="0" y2="1">
-                <stop
-                  offset="5%"
-                  stopColor="var(--primary)"
-                  stopOpacity={0.8}
-                />
-                <stop
-                  offset="95%"
-                  stopColor="var(--primary)"
-                  stopOpacity={0.1}
-                />
-              </linearGradient>
-            </defs>
-            <CartesianGrid vertical={false} />
-            <XAxis
-              dataKey="date"
-              tickLine={false}
-              axisLine={false}
-              tickMargin={8}
-              minTickGap={32}
-              interval="preserveStartEnd" // vagy "equidistantPreserveStart"
-              tickFormatter={(value) =>
-                new Date(value).toLocaleDateString("hu-HU", {
-                  month: "short",
-                  day: "numeric",
-                })
-              }
-            />
-            <ChartTooltip
-              cursor={false}
-              defaultIndex={isMobile ? -1 : 10}
-              content={
-                <ChartTooltipContent
-                  labelFormatter={(value: string | number | Date) =>
-                    new Date(value).toLocaleDateString("hu-HU", {
-                      month: "short",
-                      day: "numeric",
-                    })
-                  }
-                  indicator="dot"
-                />
-              }
-            />
-            <Area
-              dataKey="amount"
-              type="monotone"
-              fill="url(#fillExpense)"
-              stroke="var(--primary)"
-            />
-          </AreaChart>
+<BarChart data={chartData} barSize={24}   margin={{ top: 10, right: 30, left: 0, bottom: 5 }}
+>
+  <CartesianGrid vertical={false} />
+  <XAxis
+    dataKey="date"
+    tickLine={false}
+    axisLine={false}
+    tickMargin={8}
+    minTickGap={32}
+    interval="preserveStartEnd"
+    tickFormatter={(value) =>
+      new Date(value).toLocaleDateString("hu-HU", {
+        month: "short",
+        day: "numeric",
+      })
+    }
+  />
+  <YAxis
+    tickLine={false}
+    axisLine={false}
+    tickFormatter={(value) => `${value.toLocaleString()} Ft`}
+  />
+  <ChartTooltip
+    cursor={{ fill: "var(--muted)" }}
+    defaultIndex={isMobile ? -1 : 10}
+    content={
+      <ChartTooltipContent
+        labelFormatter={(value: string | number | Date) =>
+          new Date(value).toLocaleDateString("hu-HU", {
+            month: "short",
+            day: "numeric",
+          })
+        }
+        indicator="dashed"
+      />
+    }
+  />
+  <Bar
+dataKey="amount" fill="var(--primary)" radius={[4, 4, 0, 0]} barSize={24}
+  />
+</BarChart>
+
         </ChartContainer>
       </CardContent>
     </Card>
-  );
+  )
 }

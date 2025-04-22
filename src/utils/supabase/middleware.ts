@@ -18,7 +18,12 @@ export async function updateSession(request: NextRequest) {
 
   if(request.nextUrl.pathname == ('/')|| request.nextUrl.pathname == ('')) {
     return NextResponse.redirect(url)
+  }
 
+  if(user?.user_metadata?.role && user?.user_metadata?.role !== 'admin' && request.nextUrl.pathname !==('/dashboard/orders')) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/dashboard/orders';
+    return NextResponse.redirect(url);
   }
 
 
@@ -28,9 +33,9 @@ export async function updateSession(request: NextRequest) {
     !request.nextUrl.pathname.startsWith('/auth') &&
     !request.nextUrl.pathname.startsWith('/signup') 
   ) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/login'
-    return NextResponse.redirect(url)
+    const url = request.nextUrl.clone();
+    url.pathname = '/login';
+    return NextResponse.redirect(url);
   }
 
   return supabaseResponse

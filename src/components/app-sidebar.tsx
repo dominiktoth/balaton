@@ -8,9 +8,11 @@ import {
   IconFileDescription,
   IconInnerShadowTop,
   IconShoppingCart,
+  IconPackage,
   IconToolsKitchen2,
   IconBrandCashapp,
   IconBeach,
+  IconUser
 } from "@tabler/icons-react"
 
 import { NavMain } from "~/components/nav-main"
@@ -44,7 +46,17 @@ const data = {
       title: "Termékek",
       url: "/dashboard/products",
       icon: IconToolsKitchen2,
-    }, 
+    },
+    {
+      title: "Rendelés",
+      url: "/dashboard/orders",
+      icon: IconPackage,
+    },
+    {
+      title: "Felhasználók",
+      url: "/dashboard/users",
+      icon: IconUser,
+    },
     {
       title: "Kiadások",
       url: "/dashboard/expenses",

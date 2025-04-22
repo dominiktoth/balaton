@@ -6,11 +6,13 @@ import "./src/env.js";
 
 /** @type {import("next").NextConfig} */
 const config = {
-
-    i18n: {
-        locales: ['en'],      
-        defaultLocale: 'en',
-      },
+  i18n: {
+    locales: ['en'],      
+    defaultLocale: 'en',
+  },
+  images: {
+    domains: ['unsplash.com', 'images.unsplash.com', 'pcmnkcdjwqvntgxdwzzc.supabase.co'], 
+  },
 };
 
 export default config;
