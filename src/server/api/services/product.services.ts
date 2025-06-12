@@ -1,5 +1,5 @@
-import { db } from '~/server/db';
-import { type Product } from '@prisma/client';
+import { db } from "~/server/db";
+import { type Product } from "@prisma/client";
 
 export const productService = {
   createProduct: async (
@@ -8,10 +8,10 @@ export const productService = {
     price: number,
     imageUrl: string,
     stock: number,
-    storeId: string
+    storeId: string,
   ): Promise<Product> => {
     return db.product.upsert({
-      where: { id: id || '' },
+      where: { id: id || "" },
       create: {
         name,
         price,
@@ -29,8 +29,6 @@ export const productService = {
     });
   },
 
-  
-
   deleteProduct: async (id: string): Promise<Product> => {
     return db.product.delete({
       where: { id },
@@ -38,12 +36,17 @@ export const productService = {
   },
 };
 
-
 export const getAllProducts = async (
   storeId?: string,
-  search?: string
+  search?: string,
 ): Promise<(Product & { store: { name: string } })[]> => {
-  const whereClause: any = {
+  const whereClause: {
+    storeId?: string;
+    name?: {
+      contains: string;
+      mode: "insensitive";
+    };
+  } = {
     storeId: storeId,
   };
 
