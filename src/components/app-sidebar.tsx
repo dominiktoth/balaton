@@ -8,9 +8,11 @@ import {
   IconFileDescription,
   IconInnerShadowTop,
   IconShoppingCart,
+  IconPackage,
   IconToolsKitchen2,
   IconBrandCashapp,
   IconBeach,
+  IconUser
 } from "@tabler/icons-react"
 
 import { NavMain } from "~/components/nav-main"
@@ -24,15 +26,11 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "~/components/ui/sidebar"
+import { supabase } from "~/server/auth/supabaseClient"
 
 
 
 const data = {
-  user: {
-    name: "shadcn",
-    email: "m@example.com",
-    avatar: "/avatars/shadcn.jpg",
-  },
   navMain: [
     {
       title: "Dashboard",
@@ -48,7 +46,17 @@ const data = {
       title: "Termékek",
       url: "/dashboard/products",
       icon: IconToolsKitchen2,
-    }, 
+    },
+    {
+      title: "Rendelés",
+      url: "/dashboard/orders",
+      icon: IconPackage,
+    },
+    {
+      title: "Felhasználók",
+      url: "/dashboard/users",
+      icon: IconUser,
+    },
     {
       title: "Kiadások",
       url: "/dashboard/expenses",
@@ -109,6 +117,23 @@ const data = {
 }
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const [user , setUser] = React.useState<{
+    name: string
+    email: string
+    avatar: string
+  } | null>(null)
+
+  React.useEffect(() => {
+    supabase.auth.getUser().then((response) => {
+      if (response.data?.user) {
+        setUser({
+          name: response.data.user.email|| "Unknown",
+          email: response.data.user.role || "Unknown",
+          avatar: response.data.user.user_metadata.avatar_url || "",
+        });
+      }
+    });
+  }, []);
   return (
     <Sidebar collapsible="offcanvas" {...props}>
       <SidebarHeader>
@@ -131,8 +156,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={data.user} />
-      </SidebarFooter>
+{  user&&      <NavUser  user={user}/>
+}      
+</SidebarFooter>
     </Sidebar>
   )
 }

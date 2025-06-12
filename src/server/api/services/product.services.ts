@@ -1,31 +1,31 @@
-import { db } from '~/server/db';
-import { type Product } from '@prisma/client';
+import { db } from "~/server/db";
+import { type Product } from "@prisma/client";
 
 export const productService = {
   createProduct: async (
+    id: string | undefined,
     name: string,
     price: number,
+    imageUrl: string,
     stock: number,
-    storeId: string
+    storeId: string,
   ): Promise<Product> => {
-    return db.product.create({
-      data: {
+    return db.product.upsert({
+      where: { id: id || "" },
+      create: {
         name,
         price,
+        imageUrl,
         stock,
         storeId,
       },
-    });
-  },
-
-  getAllProducts: async (): Promise<(Product & { store: { name: string } })[]> => {
-    return db.product.findMany({
-      include: {
-        store: {
-          select: { name: true },
-        },
+      update: {
+        name,
+        price,
+        imageUrl,
+        stock,
+        storeId,
       },
-      orderBy: { createdAt: 'desc' },
     });
   },
 
@@ -34,4 +34,36 @@ export const productService = {
       where: { id },
     });
   },
+};
+
+export const getAllProducts = async (
+  storeId?: string,
+  search?: string,
+): Promise<(Product & { store: { name: string } })[]> => {
+  const whereClause: {
+    storeId?: string;
+    name?: {
+      contains: string;
+      mode: "insensitive";
+    };
+  } = {
+    storeId: storeId,
+  };
+
+  if (search) {
+    whereClause.name = {
+      contains: search,
+      mode: "insensitive", // Case-insensitive search
+    };
+  }
+
+  return db.product.findMany({
+    where: whereClause,
+    include: {
+      store: {
+        select: { name: true },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
 };

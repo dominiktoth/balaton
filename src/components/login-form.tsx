@@ -9,11 +9,16 @@ import { Input } from "~/components/ui/input"
 import { Label } from "~/components/ui/label"
 import { supabase } from "~/server/auth/supabaseClient"
 import Image from "next/image"
+import { useDispatch } from "react-redux"
+import { login } from "~/store/userSlice"
+import { api } from "~/trpc/react"
 
 export function LoginForm({
   className,
   ...props
 }: React.ComponentProps<"div">) {
+  const [userEmail, setUserEmail] = useState("")
+  
   const router = useRouter()
   const searchParams = useSearchParams()
   const redirectTo = searchParams.get("redirectTo") ?? "/dashboard"
@@ -23,38 +28,50 @@ export function LoginForm({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
 
+
+  const dispatch = useDispatch();
+  const dbUser = api.user.getByEmail.useMutation();
+
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    setLoading(true)
-    setError("")
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-
-    setLoading(false)
-
-    if (error) {
-      setError(error.message)
-    } else {
-      router.push(redirectTo)
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+  
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+  
+      if (error) {
+        setError(error.message);
+        setLoading(false);
+        return;
+      }
+  
+      const { data: userData } = await supabase.auth.getUser();
+  
+      if (userData?.user) {
+        const dbUserResult = await dbUser.mutateAsync({ email: userData.user.email! });
+  
+        dispatch(
+          login({
+            id: userData.user.id,
+            name: userData.user.user_metadata?.name || "",
+            email: userData.user.email ?? "",
+            role: userData.user?.user_metadata?.role ?? "",
+            storeId: dbUserResult?.storeId ?? "", // ✅ This should now be defined
+          })
+        );
+  
+        router.push(redirectTo);
+      }
+    } catch (err) {
+      setError("Hiba történt a bejelentkezés során.");
+      console.error("Login error:", err);
+    } finally {
+      setLoading(false);
     }
-  }
+  };
+  
 
-  const handleOAuth = async (provider: "google") => {
-    setLoading(true)
-
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider,
-      options: {
-        redirectTo: `${location.origin}/auth/callback`, // 👈 make sure this route exists
-      },
-    })
-
-    if (error) setError(error.message)
-    setLoading(false)
-  }
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
