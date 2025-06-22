@@ -1,0 +1,181 @@
+"use client";
+import { useState } from "react";
+import { api } from "~/trpc/react";
+import { Input } from "~/components/ui/input";
+import { Label } from "~/components/ui/label";
+import { Button } from "~/components/ui/button";
+import {
+  Dialog,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "~/components/ui/dialog";
+
+function getToday() {
+  return new Date().toISOString().split('T')[0];
+}
+
+export default function WorkshiftsPage() {
+  const { data: workers = [] } = api.worker.getWorkers.useQuery();
+  const { data: stores = [] } = api.store.getAllStores.useQuery();
+
+  const [selectedWorker, setSelectedWorker] = useState("");
+  const [selectedStore, setSelectedStore] = useState("");
+  const [selectedDate, setSelectedDate] = useState("");
+
+  // Fetch all workshifts for the selected worker, or all if none selected
+  const { data: allWorkshifts = [], refetch: refetchWorkshifts } = api.workshift.getWorkShiftsByWorker.useQuery(
+    selectedWorker ? { workerId: selectedWorker } : { workerId: "" },
+    {
+      enabled: !!selectedWorker,
+    }
+  );
+  // Fetch all workshifts for all workers if only date is selected
+  const { data: allWorkshiftsByDate = [], refetch: refetchWorkshiftsByDate } = api.workshift.getWorkShiftsByStoreAndDate.useQuery(
+    { storeId: "", date: selectedDate },
+    { enabled: !!selectedDate && !selectedWorker && !selectedStore }
+  );
+
+  const { mutate: deleteWorkShift, isPending: isDeleting } = api.workshift.deleteWorkShift.useMutation({
+    onSuccess: () => {
+      refetchWorkshifts();
+      refetchWorkshiftsByDate();
+    },
+  });
+
+  const [workshiftToDelete, setWorkshiftToDelete] = useState<null | { id: string; date: string; hours: number }>(null);
+
+  // Filtering logic
+  let displayWorkshifts: any[] = [];
+  if (selectedWorker) {
+    displayWorkshifts = allWorkshifts.filter(ws =>
+      (!selectedStore || ws.storeId === selectedStore) &&
+      (!selectedDate || ws.date.toISOString().split('T')[0] === selectedDate)
+    );
+  } else if (selectedDate && !selectedWorker && !selectedStore) {
+    displayWorkshifts = allWorkshiftsByDate;
+  }
+
+  const getWorkerName = (workerId: string) => workers.find(w => w.id === workerId)?.name || "";
+  const getStoreName = (storeId: string) => stores.find(s => s.id === storeId)?.name || "";
+
+  return (
+    <div className="max-w-3xl mx-auto py-10 px-4 md:px-0">
+      <h1 className="text-3xl font-bold mb-6">Ledolgozott órák</h1>
+      <div className="flex gap-4 mb-6">
+        <div>
+          <Label>Dolgozó</Label>
+          <select
+            value={selectedWorker}
+            onChange={e => setSelectedWorker(e.target.value)}
+            className="w-full border rounded px-3 py-2"
+          >
+            <option value="">Összes</option>
+            {workers.map(w => (
+              <option key={w.id} value={w.id}>{w.name}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <Label>Üzlet</Label>
+          <select
+            value={selectedStore}
+            onChange={e => setSelectedStore(e.target.value)}
+            className="w-full border rounded px-3 py-2"
+          >
+            <option value="">Összes</option>
+            {stores.map(s => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <Label htmlFor="workshift-date">Dátum</Label>
+          <div className="flex items-center gap-2">
+            <label htmlFor="workshift-date" style={{ display: "block", cursor: "pointer", flex: 1 }}>
+              <Input
+                id="workshift-date"
+                type="date"
+                value={selectedDate}
+                onChange={e => setSelectedDate(e.target.value)}
+                className="w-full border rounded px-3 py-2"
+              />
+            </label>
+            {selectedDate && (
+              <Button type="button" variant="secondary" size="sm" onClick={() => setSelectedDate("")}>Törlés</Button>
+            )}
+          </div>
+        </div>
+      </div>
+      <table className="w-full border rounded">
+        <thead>
+          <tr className="bg-muted">
+            <th className="p-2 text-left">Dolgozó</th>
+            <th className="p-2 text-left">Üzlet</th>
+            <th className="p-2 text-left">Dátum</th>
+            <th className="p-2 text-left">Órák</th>
+          </tr>
+        </thead>
+        <tbody>
+          {displayWorkshifts.map(ws => (
+            <tr key={ws.id} className="border-t">
+              <td className="p-2">{getWorkerName(ws.workerId)}</td>
+              <td className="p-2">{getStoreName(ws.storeId)}</td>
+              <td className="p-2">{new Date(ws.date).toLocaleDateString()}</td>
+              <td className="p-2 flex items-center gap-2">
+                {ws.hours}
+                <Dialog
+                  open={workshiftToDelete?.id === ws.id}
+                  onOpenChange={(open) => !open && setWorkshiftToDelete(null)}
+                >
+                  <DialogTrigger asChild>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={isDeleting}
+                      onClick={() => setWorkshiftToDelete({ id: ws.id, date: typeof ws.date === 'string' ? ws.date : ws.date.toISOString(), hours: ws.hours })}
+                      className="ml-2"
+                    >
+                      Törlés
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-sm">
+                    <DialogHeader>
+                      <DialogTitle>Műszak törlése</DialogTitle>
+                      <DialogDescription>
+                        Biztosan törölni szeretnéd ezt a műszakot ({ws.hours} óra, {new Date(ws.date).toLocaleDateString()})?
+                      </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                      <Button variant="secondary" onClick={() => setWorkshiftToDelete(null)}>
+                        Mégse
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        onClick={() => {
+                          deleteWorkShift({ id: ws.id });
+                          setWorkshiftToDelete(null);
+                        }}
+                        disabled={isDeleting}
+                      >
+                        {isDeleting ? "Törlés..." : "Törlés"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </td>
+            </tr>
+          ))}
+          {displayWorkshifts.length === 0 && (
+            <tr>
+              <td colSpan={4} className="p-2 text-muted-foreground text-center">Nincs adat.</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+} 

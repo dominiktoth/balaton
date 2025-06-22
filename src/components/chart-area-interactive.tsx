@@ -28,9 +28,11 @@ import { ToggleGroup, ToggleGroupItem } from "~/components/ui/toggle-group"
 export function ChartAreaInteractive({
   storeId,
   expenses = [],
+  incomes = [],
 }: {
   storeId: string
   expenses: { date: string; storeId: string; amount: number }[]
+  incomes?: { date: string; storeId: string; amount: number }[]
 }) {
   const isMobile = useIsMobile()
   const [timeRange, setTimeRange] = React.useState("90d")
@@ -60,26 +62,51 @@ export function ChartAreaInteractive({
         date: new Date(e.date).toISOString().split("T")[0],
         amount: e.amount,
       }))
-  }, [expenses, storeId, timeRange])
+  }, [expenses, storeId, timeRange]) || [];
 
+  const filteredIncomes = React.useMemo(() => {
+    const referenceDate = new Date()
+    const startDate = new Date(referenceDate)
+    const days = timeRange === "7d" ? 7 : timeRange === "30d" ? 30 : 90
+    startDate.setDate(referenceDate.getDate() - days)
+    return (incomes || [])
+      .filter((i) => {
+        const date = new Date(i.date)
+        return (
+          date >= startDate &&
+          (storeId === "all" || i.storeId === storeId)
+        )
+      })
+      .map((i) => ({
+        date: new Date(i.date).toISOString().split("T")[0],
+        amount: i.amount,
+      }))
+  }, [incomes, storeId, timeRange]) || [];
+
+  // Merge data by date for chart
   const chartData = React.useMemo(() => {
-    const result: Record<string, number> = {}
-
+    const map: Record<string, { date: string; expense: number; income: number }> = {}
     for (const e of filteredExpenses) {
-      if (e.date) {
-        result[e.date] = (result[e.date] ?? 0) + e.amount
+      const dateKey = e?.date || '';
+      if (dateKey) {
+        if (!map[dateKey]) map[dateKey] = { date: dateKey, expense: 0, income: 0 }
+        map[dateKey].expense += e.amount
       }
     }
-
-    return Object.entries(result)
-      .map(([date, amount]) => ({ date, amount }))
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-  }, [filteredExpenses])
+    for (const i of filteredIncomes) {
+      const dateKey = i?.date || '';
+      if (dateKey) {
+        if (!map[dateKey]) map[dateKey] = { date: dateKey, expense: 0, income: 0 }
+        map[dateKey].income += i.amount
+      }
+    }
+    return Object.values(map).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+  }, [filteredExpenses, filteredIncomes])
 
   return (
     <Card className="@container/card">
       <CardHeader>
-        <CardTitle>Kiadások alakulása</CardTitle>
+        <CardTitle>Kiadások és bevételek alakulása</CardTitle>
         <CardDescription>
           {storeId === "all" ? "Összes bolt" : `Bolt azonosító: ${storeId}`} –
           Utolsó {timeRange}
@@ -112,15 +139,18 @@ export function ChartAreaInteractive({
       <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
         <ChartContainer
           config={{
-            amount: {
+            expense: {
               label: "Kiadás",
               color: "var(--primary)",
+            },
+            income: {
+              label: "Bevétel",
+              color: "#22c55e",
             },
           }}
           className="aspect-auto h-[250px] w-full"
         >
-<BarChart data={chartData} barSize={24}   margin={{ top: 10, right: 30, left: 0, bottom: 5 }}
->
+<BarChart data={chartData} barSize={24}   margin={{ top: 10, right: 30, left: 0, bottom: 5 }}>
   <CartesianGrid vertical={false} />
   <XAxis
     dataKey="date"
@@ -157,10 +187,12 @@ export function ChartAreaInteractive({
     }
   />
   <Bar
-dataKey="amount" fill="var(--primary)" radius={[4, 4, 0, 0]} barSize={24}
+    dataKey="expense" fill="var(--primary)" radius={[4, 4, 0, 0]} barSize={24}
+  />
+  <Bar
+    dataKey="income" fill="#22c55e" radius={[4, 4, 0, 0]} barSize={24}
   />
 </BarChart>
-
         </ChartContainer>
       </CardContent>
     </Card>

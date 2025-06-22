@@ -6,12 +6,15 @@ import { SectionCards } from "~/components/section-cards";
 import { ChartAreaInteractive } from "~/components/chart-area-interactive";
 import { supabase } from "~/server/auth/supabaseClient";
 import React from "react";
+import { IncomeDialog } from "~/components/IncomeDialog";
+import { WorkshiftDialog } from "~/components/WorkshiftDialog";
+import { ExpenseDialog } from "~/components/ExpenseDialog";
 
 export default function DashboardPage() {
   const [selectedStoreId, setSelectedStoreId] = useState<string>("all");
 
   const { data: stores, isLoading } = api.store.getAllStores.useQuery();
-  const { data: expenses, isLoading: isExpensesLoading } =
+  const { data: expenses, isLoading: isExpensesLoading, refetch: refetchExpenses } =
     api.expense.getAllExpenses.useQuery();
   const { data: todayTotal = 0 } = api.order.getStoreOrders.useQuery(
     { storeId: selectedStoreId },
@@ -20,6 +23,33 @@ export default function DashboardPage() {
   const { data: allOrders = [] } = api.order.getStoreOrders.useQuery({
     storeId: selectedStoreId,
   });
+
+  // Fetch incomes
+  const { data: allIncomes = [], refetch: refetchAllIncomes } = api.income.getAllIncomes.useQuery(undefined, {
+    enabled: selectedStoreId === "all",
+  });
+  const { data: incomes = [], refetch: refetchIncomes } = api.income.getIncomesByStore.useQuery(
+    { storeId: selectedStoreId },
+    { enabled: selectedStoreId !== "all" && !!selectedStoreId }
+  );
+
+  // Use correct incomes array for chart and summary
+  const incomesToShow = selectedStoreId === "all" ? allIncomes : incomes;
+
+  // Debug: log incomesToShow
+  console.log('incomesToShow', incomesToShow);
+
+  // Fetch workers
+  const { data: workers = [], refetch: refetchWorkers } = api.worker.getWorkers.useQuery();
+
+  // Refetch all relevant data after dialog actions
+  const handleDataRefresh = () => {
+    void refetchExpenses();
+    void refetchIncomes();
+    void refetchAllIncomes();
+    void refetchWorkers();
+  };
+
   const [user, setUser] = React.useState<{
     name: string;
     email: string;
@@ -28,7 +58,6 @@ export default function DashboardPage() {
 
   React.useEffect(() => {
     supabase.auth.getUser().then((response) => {
-      console.log(response);
       if (response.data?.user) {
         setUser({
           name: response.data.user.email || "Unknown",
@@ -38,6 +67,11 @@ export default function DashboardPage() {
       }
     });
   }, []);
+
+  // Calculate profit if incomes and expenses are available
+  const totalIncome = incomesToShow.reduce((sum, i) => sum + i.amount, 0);
+  const totalExpense = (expenses || []).reduce((sum, e) => sum + e.amount, 0);
+  const profit = totalIncome - totalExpense;
 
   return (
     <div className="flex flex-1 flex-col">
@@ -73,6 +107,35 @@ export default function DashboardPage() {
             </div>
           </Tabs>
 
+          {/* Dialogs for income, expense, and workshift */}
+          <div className="flex gap-4 px-4 lg:px-6">
+            {stores && stores.length > 0 && (
+              <>
+                <IncomeDialog stores={stores} onSuccess={handleDataRefresh} />
+                <ExpenseDialog stores={stores} onSuccess={handleDataRefresh} />
+              </>
+            )}
+            {stores && stores.length > 0 && workers && workers.length > 0 && (
+              <WorkshiftDialog stores={stores} workers={workers} onSuccess={handleDataRefresh} />
+            )}
+          </div>
+
+          {/* Summary Section */}
+          <div className="px-4 lg:px-6 flex gap-8 mt-4">
+            <div>
+              <div className="font-bold">Bevételek összesen</div>
+              <div>{totalIncome.toLocaleString()} Ft</div>
+            </div>
+            <div>
+              <div className="font-bold">Kiadások összesen</div>
+              <div>{totalExpense.toLocaleString()} Ft</div>
+            </div>
+            <div>
+              <div className="font-bold">Profit</div>
+              <div>{profit.toLocaleString()} Ft</div>
+            </div>
+          </div>
+
           <SectionCards
             storeId={selectedStoreId}
             todayTotal={todayTotal}
@@ -83,12 +146,19 @@ export default function DashboardPage() {
               storeId={selectedStoreId}
               expenses={
                 expenses?.map((expense) => ({
-                  date: expense.date.toISOString(),
+                  date: typeof expense.date === 'string' ? expense.date : expense.date.toISOString(),
                   storeId: expense.storeId,
                   amount: expense.amount,
                 })) || []
               }
-            />{" "}
+              incomes={
+                incomesToShow?.map((income) => ({
+                  date: typeof income.date === 'string' ? income.date : income.date.toISOString(),
+                  storeId: income.storeId,
+                  amount: income.amount,
+                })) || []
+              }
+            />
           </div>
         </div>
       </div>
