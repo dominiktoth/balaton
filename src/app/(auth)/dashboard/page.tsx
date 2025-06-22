@@ -9,9 +9,13 @@ import React from "react";
 import { IncomeDialog } from "~/components/IncomeDialog";
 import { WorkshiftDialog } from "~/components/WorkshiftDialog";
 import { ExpenseDialog } from "~/components/ExpenseDialog";
+import { Input } from "~/components/ui/input";
+import { Label } from "~/components/ui/label";
+import { Button } from "~/components/ui/button";
 
 export default function DashboardPage() {
   const [selectedStoreId, setSelectedStoreId] = useState<string>("all");
+  const [selectedDate, setSelectedDate] = useState<string>("");
 
   const { data: stores, isLoading } = api.store.getAllStores.useQuery();
   const { data: expenses, isLoading: isExpensesLoading, refetch: refetchExpenses } =
@@ -68,9 +72,31 @@ export default function DashboardPage() {
     });
   }, []);
 
+  // Helper to get today as YYYY-MM-DD
+  function getToday() {
+    return new Date().toISOString().split('T')[0];
+  }
+
+  // Filter incomes and expenses by selected date (or today if not selected)
+  const filterDate = selectedDate || getToday();
+  const filteredIncomes = incomesToShow.filter(i => {
+    const date = i.date as string | Date | undefined;
+    if (!date) return false;
+    if (typeof date === 'string' && typeof date.split === 'function') return date.split('T')[0] === filterDate;
+    if (date instanceof Date) return date.toISOString().split('T')[0] === filterDate;
+    return false;
+  });
+  const filteredExpenses = (expenses || []).filter(e => {
+    const date = e.date as string | Date | undefined;
+    if (!date) return false;
+    if (typeof date === 'string' && typeof date.split === 'function') return date.split('T')[0] === filterDate;
+    if (date instanceof Date) return date.toISOString().split('T')[0] === filterDate;
+    return false;
+  });
+
   // Calculate profit if incomes and expenses are available
-  const totalIncome = incomesToShow.reduce((sum, i) => sum + i.amount, 0);
-  const totalExpense = (expenses || []).reduce((sum, e) => sum + e.amount, 0);
+  const totalIncome = filteredIncomes.reduce((sum, i) => sum + i.amount, 0);
+  const totalExpense = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
   const profit = totalIncome - totalExpense;
 
   return (
@@ -120,6 +146,21 @@ export default function DashboardPage() {
             )}
           </div>
 
+          {/* Date Picker */}
+          <div className="px-4 lg:px-6 mb-4 flex items-center gap-2">
+            <Label htmlFor="dashboard-date">Dátum</Label>
+            <Input
+              id="dashboard-date"
+              type="date"
+              value={selectedDate}
+              onChange={e => setSelectedDate(e.target.value)}
+              className="w-48"
+            />
+            {selectedDate && (
+              <Button type="button" variant="secondary" size="sm" onClick={() => setSelectedDate("")}>Törlés</Button>
+            )}
+          </div>
+
           {/* Summary Section */}
           <div className="px-4 lg:px-6 flex gap-8 mt-4">
             <div>
@@ -138,21 +179,21 @@ export default function DashboardPage() {
 
           <SectionCards
             storeId={selectedStoreId}
-            todayTotal={todayTotal}
-            expenses={expenses || []}
+            expenses={filteredExpenses}
+            incomes={filteredIncomes}
           />
           <div className="px-4 lg:px-6">
             <ChartAreaInteractive
               storeId={selectedStoreId}
               expenses={
-                expenses?.map((expense) => ({
+                filteredExpenses?.map((expense) => ({
                   date: typeof expense.date === 'string' ? expense.date : expense.date.toISOString(),
                   storeId: expense.storeId,
                   amount: expense.amount,
                 })) || []
               }
               incomes={
-                incomesToShow?.map((income) => ({
+                filteredIncomes?.map((income) => ({
                   date: typeof income.date === 'string' ? income.date : income.date.toISOString(),
                   storeId: income.storeId,
                   amount: income.amount,
