@@ -12,7 +12,9 @@ import {
   IconToolsKitchen2,
   IconBrandCashapp,
   IconBeach,
-  IconUser
+  IconUser,
+  IconUsers,
+  IconClock
 } from "@tabler/icons-react"
 
 import { NavMain } from "~/components/nav-main"
@@ -42,28 +44,23 @@ const data = {
       url: "/dashboard/stores",
       icon: IconShoppingCart,
     },
-    {
-      title: "Termékek",
-      url: "/dashboard/products",
-      icon: IconToolsKitchen2,
-    },
-    {
-      title: "Rendelés",
-      url: "/dashboard/orders",
-      icon: IconPackage,
-    },
+
+
     {
       title: "Felhasználók",
       url: "/dashboard/users",
       icon: IconUser,
     },
     {
-      title: "Kiadások",
-      url: "/dashboard/expenses",
-      icon: IconBrandCashapp,
+      title: "Dolgozók",
+      url: "/dashboard/workers",
+      icon: IconUsers,
     },
-
-
+    {
+      title: "Ledolgozott órák",
+      url: "/dashboard/workshifts",
+      icon: IconClock,
+    },
   ],
   navClouds: [
     {
