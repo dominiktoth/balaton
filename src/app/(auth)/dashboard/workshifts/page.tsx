@@ -14,6 +14,14 @@ import {
   DialogFooter,
 } from "~/components/ui/dialog";
 
+type Workshift = {
+  id: string;
+  workerId: string;
+  storeId: string;
+  date: string | Date;
+  hours: number;
+};
+
 function getToday() {
   return new Date().toISOString().split('T')[0];
 }
@@ -49,7 +57,7 @@ export default function WorkshiftsPage() {
   const [workshiftToDelete, setWorkshiftToDelete] = useState<null | { id: string; date: string; hours: number }>(null);
 
   // Filtering logic
-  let displayWorkshifts: any[] = [];
+  let displayWorkshifts: Workshift[] = [];
   if (selectedWorker) {
     displayWorkshifts = allWorkshifts.filter(ws =>
       (!selectedStore || ws.storeId === selectedStore) &&

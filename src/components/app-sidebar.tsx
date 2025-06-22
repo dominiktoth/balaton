@@ -14,7 +14,8 @@ import {
   IconBeach,
   IconUser,
   IconUsers,
-  IconClock
+  IconClock,
+  IconCurrencyForint
 } from "@tabler/icons-react"
 
 import { NavMain } from "~/components/nav-main"
@@ -60,6 +61,11 @@ const data = {
       title: "Ledolgozott órák",
       url: "/dashboard/workshifts",
       icon: IconClock,
+    },
+    {
+      title: "Pénzügyek",
+      url: "/dashboard/finances",
+      icon: IconCurrencyForint,
     },
   ],
   navClouds: [

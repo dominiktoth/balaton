@@ -13,6 +13,14 @@ import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
 import { Label } from '~/components/ui/label';
 
+type Workshift = {
+  id: string;
+  workerId: string;
+  storeId: string;
+  date: string | Date;
+  hours: number;
+};
+
 export function WorkshiftDialog({ stores, workers, onSuccess }: {
   stores: { id: string; name: string }[];
   workers: { id: string; name: string }[];
@@ -27,7 +35,7 @@ export function WorkshiftDialog({ stores, workers, onSuccess }: {
   const { data: existingWorkshifts = [], refetch: refetchExisting } = api.workshift.getWorkShiftsForStoreAndDateAllWorkers.useQuery(
     { storeId, date },
     { enabled: !!storeId && !!date }
-  );
+  ) as { data: Workshift[]; refetch: () => void };
 
   // Pre-fill hours when existingWorkshifts change
   useEffect(() => {
@@ -46,7 +54,7 @@ export function WorkshiftDialog({ stores, workers, onSuccess }: {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!storeId || !date) return;
-    const promises: Promise<any>[] = [];
+    const promises: Promise<unknown>[] = [];
     for (const worker of workers) {
       const value = hours[worker.id];
       const existing = existingWorkshifts.find(ws => ws.workerId === worker.id);

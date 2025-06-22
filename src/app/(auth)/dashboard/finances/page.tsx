@@ -15,14 +15,21 @@ import {
   DialogFooter,
 } from "~/components/ui/dialog";
 
+type FinanceItem = {
+  id: string;
+  amount: number;
+  date: string | Date;
+  storeId: string;
+};
+
 export default function FinancesPage() {
   const { data: stores = [] } = api.store.getAllStores.useQuery();
   const [selectedStore, setSelectedStore] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [tab, setTab] = useState("incomes");
-  const [editItem, setEditItem] = useState<any | null>(null);
-  const [deleteItem, setDeleteItem] = useState<any | null>(null);
+  const [editItem, setEditItem] = useState<FinanceItem | null>(null);
+  const [deleteItem, setDeleteItem] = useState<FinanceItem | null>(null);
   const [editType, setEditType] = useState<"income" | "expense" | null>(null);
 
   // Fetch incomes and expenses for the selected store and date range
@@ -44,7 +51,7 @@ export default function FinancesPage() {
   });
 
   // Filter by store and date range
-  const filterByStoreAndDate = (arr: any[]) =>
+  const filterByStoreAndDate = (arr: FinanceItem[]) =>
     arr.filter((item) =>
       item.storeId === selectedStore &&
       (!startDate || new Date(item.date) >= new Date(startDate)) &&
@@ -58,11 +65,17 @@ export default function FinancesPage() {
   const [editAmount, setEditAmount] = useState("");
   const [editDate, setEditDate] = useState("");
 
-  const openEdit = (item: any, type: "income" | "expense") => {
+  const openEdit = (item: FinanceItem, type: "income" | "expense") => {
     setEditType(type);
     setEditItem(item);
     setEditAmount(item.amount.toString());
-    setEditDate(typeof item.date === "string" ? item.date.split("T")[0] : item.date.toISOString().split("T")[0]);
+    let dateString = "";
+    if (typeof item.date === "string") {
+      dateString = String(item.date ?? '').split("T")[0] || '';
+    } else if (item.date instanceof Date) {
+      dateString = (item.date ? item.date.toISOString() : '').split("T")[0] || '';
+    }
+    setEditDate(dateString);
   };
 
   const handleEditSubmit = (e: React.FormEvent) => {
