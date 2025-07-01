@@ -33,6 +33,7 @@ model Store {
     User      User[]
     incomes   Income[]
     workShifts WorkShift[]
+    workers   Worker[]
 }
 
 model Product {
@@ -117,6 +118,8 @@ model Income {
 model Worker {
     id        String      @id @default(uuid())
     name      String
+    store     Store?      @relation(fields: [storeId], references: [id])
+    storeId   String?
     shifts    WorkShift[]
     createdAt DateTime    @default(now())
     updatedAt DateTime    @updatedAt
@@ -129,7 +132,6 @@ model WorkShift {
     store     Store    @relation(fields: [storeId], references: [id])
     storeId   String
     date      DateTime
-    hours     Float
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
 }

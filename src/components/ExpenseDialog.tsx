@@ -33,10 +33,20 @@ export function ExpenseDialog({ stores, onSuccess }: { stores: { id: string; nam
     },
   });
 
+  const formatAmount = (value: string) => {
+    const num = value.replace(/\D/g, '');
+    if (!num) return '';
+    return parseInt(num, 10).toLocaleString('hu-HU');
+  };
+
+  const parseAmount = (value: string) => {
+    return value.replace(/\s/g, '').replace(/\./g, '').replace(/,/g, '');
+  };
+
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!amount || !storeId || !date) return;
-    createExpense({ amount: parseFloat(amount), storeId, date });
+    createExpense({ amount: parseFloat(parseAmount(amount)), storeId, date });
   };
 
   return (
@@ -55,9 +65,10 @@ export function ExpenseDialog({ stores, onSuccess }: { stores: { id: string; nam
             <div>
               <Label className="mb-2">Összeg</Label>
               <Input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={e => setAmount(formatAmount(e.target.value))}
                 placeholder="0"
                 required
               />

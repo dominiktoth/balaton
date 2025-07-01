@@ -142,7 +142,7 @@ export default function DashboardPage() {
               </>
             )}
             {stores && stores.length > 0 && workers && workers.length > 0 && (
-              <WorkshiftDialog stores={stores} workers={workers} onSuccess={handleDataRefresh} />
+              <WorkshiftDialog stores={stores} onSuccess={handleDataRefresh} />
             )}
           </div>
 
@@ -153,7 +153,10 @@ export default function DashboardPage() {
               id="dashboard-date"
               type="date"
               value={selectedDate}
-              onChange={e => setSelectedDate(e.target.value)}
+              onChange={e => {
+                setSelectedDate(e.target.value);
+                setSelectedStoreId("all");
+              }}
               className="w-48"
             />
             {selectedDate && (
@@ -186,18 +189,18 @@ export default function DashboardPage() {
             <ChartAreaInteractive
               storeId={selectedStoreId}
               expenses={
-                filteredExpenses?.map((expense) => ({
+                (expenses || []).map((expense) => ({
                   date: typeof expense.date === 'string' ? expense.date : expense.date.toISOString(),
                   storeId: expense.storeId,
                   amount: expense.amount,
-                })) || []
+                }))
               }
               incomes={
-                filteredIncomes?.map((income) => ({
+                (incomesToShow || []).map((income) => ({
                   date: typeof income.date === 'string' ? income.date : income.date.toISOString(),
                   storeId: income.storeId,
                   amount: income.amount,
-                })) || []
+                }))
               }
             />
           </div>

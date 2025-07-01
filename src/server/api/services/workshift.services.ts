@@ -1,8 +1,8 @@
 import { db } from '../../db';
 
-export async function createWorkShift({ workerId, storeId, date, hours }: { workerId: string; storeId: string; date: Date; hours: number }) {
+export async function createWorkShift({ workerId, storeId, date }: { workerId: string; storeId: string; date: Date }) {
   return db.workShift.create({
-    data: { workerId, storeId, date, hours },
+    data: { workerId, storeId, date },
   });
 }
 
@@ -31,13 +31,6 @@ export async function getWorkShiftsByWorker(workerId: string) {
     where: { workerId },
     orderBy: { date: 'desc' },
     include: { store: true },
-  });
-}
-
-export async function updateWorkShift(id: string, hours: number) {
-  return db.workShift.update({
-    where: { id },
-    data: { hours },
   });
 }
 

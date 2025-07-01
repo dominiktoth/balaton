@@ -13,70 +13,55 @@ import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
 import { Label } from '~/components/ui/label';
 
-type Workshift = {
-  id: string;
-  workerId: string;
-  storeId: string;
-  date: string | Date;
-  hours: number;
-};
-
-export function WorkshiftDialog({ stores, workers, onSuccess }: {
+export function WorkshiftDialog({ stores, onSuccess }: {
   stores: { id: string; name: string }[];
-  workers: { id: string; name: string }[];
   onSuccess?: () => void;
 }) {
   const [storeId, setStoreId] = useState('');
   const [date, setDate] = useState('');
-  const [hours, setHours] = useState<{ [workerId: string]: string }>({});
+  const [present, setPresent] = useState<{ [workerId: string]: boolean }>({});
   const [open, setOpen] = useState(false);
+
+  // Lekérjük az adott üzlet dolgozóit
+  const { data: workers = [] } = api.worker.getWorkersByStore.useQuery({ storeId }, { enabled: !!storeId });
 
   // Fetch existing workshifts for the selected store and date
   const { data: existingWorkshifts = [], refetch: refetchExisting } = api.workshift.getWorkShiftsForStoreAndDateAllWorkers.useQuery(
     { storeId, date },
     { enabled: !!storeId && !!date }
-  ) as { data: Workshift[]; refetch: () => void };
+  );
 
-  // Pre-fill hours when existingWorkshifts change
+  // Pre-fill jelenlét, ha már van rögzítve
   useEffect(() => {
     if (existingWorkshifts && existingWorkshifts.length > 0) {
-      const newHours: { [workerId: string]: string } = {};
-      for (const ws of existingWorkshifts) {
-        newHours[ws.workerId] = ws.hours.toString();
+      const newPresent: { [workerId: string]: boolean } = {};
+      for (const ws of existingWorkshifts as { workerId: string }[]) {
+        newPresent[ws.workerId] = true;
       }
-      setHours((prev) => ({ ...prev, ...newHours }));
+      setPresent((prev) => ({ ...prev, ...newPresent }));
     }
   }, [existingWorkshifts]);
 
   const { mutateAsync: createWorkShift, isPending: isCreating } = api.workshift.createWorkShift.useMutation();
-  const { mutateAsync: updateWorkShift } = api.workshift.updateWorkShift.useMutation();
+  const { mutateAsync: deleteWorkShift } = api.workshift.deleteWorkShift.useMutation();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!storeId || !date) return;
     const promises: Promise<unknown>[] = [];
-    for (const worker of workers) {
-      const value = hours[worker.id];
-      const existing = existingWorkshifts.find(ws => ws.workerId === worker.id);
-      if (value && parseFloat(value) > 0) {
-        if (existing) {
-          if (existing.hours !== parseFloat(value)) {
-            promises.push(updateWorkShift({ id: existing.id, hours: parseFloat(value) }));
-          }
-        } else {
-          promises.push(createWorkShift({
-            workerId: worker.id,
-            storeId,
-            date,
-            hours: parseFloat(value),
-          }));
-        }
+    for (const worker of workers as { id: string }[]) {
+      const isPresent = present[worker.id];
+      const existing = (existingWorkshifts as { workerId: string; id: string }[]).find(ws => ws.workerId === worker.id);
+      if (isPresent && !existing) {
+        promises.push(createWorkShift({ workerId: worker.id, storeId, date }));
+      } else if (!isPresent && existing) {
+        promises.push(deleteWorkShift({ id: existing.id }));
       }
     }
     await Promise.all(promises);
     setStoreId('');
     setDate('');
-    setHours({});
+    setPresent({});
     setOpen(false);
     onSuccess?.();
     void refetchExisting();
@@ -85,13 +70,13 @@ export function WorkshiftDialog({ stores, workers, onSuccess }: {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>Dolgozók óráinak rögzítése</Button>
+        <Button>Dolgozók jelenlétének rögzítése</Button>
       </DialogTrigger>
       <DialogContent>
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Dolgozók óráinak rögzítése</DialogTitle>
-            <DialogDescription>Válassz üzletet, dátumot, és add meg a ledolgozott órákat minden dolgozónál. A már rögzített órák szerkeszthetők.</DialogDescription>
+            <DialogTitle>Dolgozók jelenlétének rögzítése</DialogTitle>
+            <DialogDescription>Válassz üzletet, dátumot, és pipáld ki, aki dolgozott aznap. A már rögzített jelenlét szerkeszthető.</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 mt-4">
@@ -124,25 +109,26 @@ export function WorkshiftDialog({ stores, workers, onSuccess }: {
               </label>
             </div>
             <div>
-              <Label className="mb-2">Dolgozók órái</Label>
-              <div className="space-y-2">
+              <Label className="mb-2">Dolgozók jelenléte</Label>
+              <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
                 {workers.map((worker) => {
                   const existing = existingWorkshifts.find(ws => ws.workerId === worker.id);
                   return (
                     <div key={worker.id} className="flex items-center gap-2">
-                      <span className="w-32">{worker.name}</span>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.1"
-                        value={hours[worker.id] || ''}
-                        onChange={(e) => setHours((prev) => ({ ...prev, [worker.id]: e.target.value }))}
-                        placeholder="Órák száma"
+                      <input
+                        type="checkbox"
+                        checked={!!present[worker.id]}
+                        onChange={(e) => setPresent((prev) => ({ ...prev, [worker.id]: e.target.checked }))}
+                        id={`present-${worker.id}`}
                       />
+                      <label htmlFor={`present-${worker.id}`} className="w-32 cursor-pointer">
+                        {worker.name}
+                      </label>
                       {existing && <span className="text-xs text-muted-foreground">(már rögzítve)</span>}
                     </div>
                   );
                 })}
+                {workers.length === 0 && <div className="text-muted-foreground">Nincs dolgozó ebben az üzletben.</div>}
               </div>
             </div>
           </div>

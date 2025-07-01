@@ -19,7 +19,6 @@ type Workshift = {
   workerId: string;
   storeId: string;
   date: string | Date;
-  hours: number;
 };
 
 function getToday() {
@@ -54,7 +53,7 @@ export default function WorkshiftsPage() {
     },
   });
 
-  const [workshiftToDelete, setWorkshiftToDelete] = useState<null | { id: string; date: string; hours: number }>(null);
+  const [workshiftToDelete, setWorkshiftToDelete] = useState<null | { id: string; date: string }>(null);
 
   // Filtering logic
   let displayWorkshifts: Workshift[] = [];
@@ -124,7 +123,7 @@ export default function WorkshiftsPage() {
             <th className="p-2 text-left">Dolgozó</th>
             <th className="p-2 text-left">Üzlet</th>
             <th className="p-2 text-left">Dátum</th>
-            <th className="p-2 text-left">Órák</th>
+            <th className="p-2 text-left">Jelen volt</th>
           </tr>
         </thead>
         <tbody>
@@ -134,7 +133,7 @@ export default function WorkshiftsPage() {
               <td className="p-2">{getStoreName(ws.storeId)}</td>
               <td className="p-2">{new Date(ws.date).toLocaleDateString()}</td>
               <td className="p-2 flex items-center gap-2">
-                {ws.hours}
+                <span className="text-green-600 font-bold">Igen</span>
                 <Dialog
                   open={workshiftToDelete?.id === ws.id}
                   onOpenChange={(open) => !open && setWorkshiftToDelete(null)}
@@ -144,7 +143,7 @@ export default function WorkshiftsPage() {
                       variant="destructive"
                       size="sm"
                       disabled={isDeleting}
-                      onClick={() => setWorkshiftToDelete({ id: ws.id, date: typeof ws.date === 'string' ? ws.date : ws.date.toISOString(), hours: ws.hours })}
+                      onClick={() => setWorkshiftToDelete({ id: ws.id, date: typeof ws.date === 'string' ? ws.date : ws.date.toISOString() })}
                       className="ml-2"
                     >
                       Törlés
@@ -152,9 +151,9 @@ export default function WorkshiftsPage() {
                   </DialogTrigger>
                   <DialogContent className="max-w-sm">
                     <DialogHeader>
-                      <DialogTitle>Műszak törlése</DialogTitle>
+                      <DialogTitle>Jelenlét törlése</DialogTitle>
                       <DialogDescription>
-                        Biztosan törölni szeretnéd ezt a műszakot ({ws.hours} óra, {new Date(ws.date).toLocaleDateString()})?
+                        Biztosan törölni szeretnéd ezt a jelenlétet? ({new Date(ws.date).toLocaleDateString()})
                       </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
