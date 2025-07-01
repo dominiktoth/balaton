@@ -20,11 +20,6 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  if(user?.user_metadata?.role && user?.user_metadata?.role !== 'admin' && request.nextUrl.pathname !==('/dashboard/orders')) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/dashboard/orders';
-    return NextResponse.redirect(url);
-  }
 
 
   if (
