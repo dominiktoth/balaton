@@ -46,6 +46,9 @@ export default function DashboardPage() {
   // Fetch workers
   const { data: workers = [], refetch: refetchWorkers } = api.worker.getWorkers.useQuery();
 
+  // Fetch wages
+  const { data: allWages = [] } = api.worker.getAllWages.useQuery();
+
   // Refetch all relevant data after dialog actions
   const handleDataRefresh = () => {
     void refetchExpenses();
@@ -77,22 +80,26 @@ export default function DashboardPage() {
     return new Date().toISOString().split('T')[0];
   }
 
-  // Filter incomes and expenses by selected date (or today if not selected)
-  const filterDate = selectedDate || getToday();
-  const filteredIncomes = incomesToShow.filter(i => {
-    const date = i.date as string | Date | undefined;
+  // Dátum szűrés: ha nincs selectedDate, akkor az aktuális év adatait mutatjuk
+  const now = new Date();
+  const yearStart = new Date(now.getFullYear(), 0, 1);
+  const filterDateRange = selectedDate
+    ? { from: new Date(selectedDate), to: new Date(selectedDate) }
+    : { from: yearStart, to: now };
+
+  const isInRange = (date: string | Date | undefined) => {
     if (!date) return false;
-    if (typeof date === 'string' && typeof date.split === 'function') return date.split('T')[0] === filterDate;
-    if (date instanceof Date) return date.toISOString().split('T')[0] === filterDate;
-    return false;
-  });
-  const filteredExpenses = (expenses || []).filter(e => {
-    const date = e.date as string | Date | undefined;
-    if (!date) return false;
-    if (typeof date === 'string' && typeof date.split === 'function') return date.split('T')[0] === filterDate;
-    if (date instanceof Date) return date.toISOString().split('T')[0] === filterDate;
-    return false;
-  });
+    const d = typeof date === 'string' ? new Date(date) : date;
+    // csak a dátumot nézzük, időt nem
+    const dYMD = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const fromYMD = new Date(filterDateRange.from.getFullYear(), filterDateRange.from.getMonth(), filterDateRange.from.getDate());
+    const toYMD = new Date(filterDateRange.to.getFullYear(), filterDateRange.to.getMonth(), filterDateRange.to.getDate());
+    return dYMD >= fromYMD && dYMD <= toYMD;
+  };
+
+  const filteredIncomes = incomesToShow.filter(i => isInRange(i.date));
+  const filteredExpenses = (expenses || []).filter(e => isInRange(e.date));
+  const filteredWages = allWages.filter(w => isInRange(w.date));
 
   // Calculate profit if incomes and expenses are available
   const totalIncome = filteredIncomes.reduce((sum, i) => sum + i.amount, 0);
@@ -184,6 +191,11 @@ export default function DashboardPage() {
             storeId={selectedStoreId}
             expenses={filteredExpenses}
             incomes={filteredIncomes}
+            wages={filteredWages.map(wage => ({
+              ...wage,
+              date: typeof wage.date === 'string' ? wage.date : wage.date.toISOString(),
+              workShift: wage.workShift === null ? undefined : wage.workShift,
+            }))}
           />
           <div className="px-4 lg:px-6">
             <ChartAreaInteractive
