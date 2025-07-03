@@ -19,6 +19,7 @@ type Workshift = {
   workerId: string;
   storeId: string;
   date: string | Date;
+  note?: string | null;
 };
 
 function getToday() {
@@ -28,10 +29,14 @@ function getToday() {
 export default function WorkshiftsPage() {
   const { data: workers = [] } = api.worker.getWorkers.useQuery();
   const { data: stores = [] } = api.store.getAllStores.useQuery();
+  const utils = api.useUtils();
 
   const [selectedWorker, setSelectedWorker] = useState("");
   const [selectedStore, setSelectedStore] = useState("");
   const [selectedDate, setSelectedDate] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const { data: allWages = [] } = api.worker.getAllWages.useQuery();
 
   // Fetch all workshifts for the selected worker, or all if none selected
   const { data: allWorkshifts = [], refetch: refetchWorkshifts } = api.workshift.getWorkShiftsByWorker.useQuery(
@@ -65,6 +70,14 @@ export default function WorkshiftsPage() {
   } else if (selectedDate && !selectedWorker && !selectedStore) {
     displayWorkshifts = allWorkshiftsByDate;
   }
+
+  // Wage szűrés: csak a kiválasztott dolgozóhoz és dátumtartományhoz tartozó Wage-ek
+  const filteredWages = allWages.filter(w =>
+    w.workerId === selectedWorker &&
+    (!dateFrom || new Date(w.date) >= new Date(dateFrom)) &&
+    (!dateTo || new Date(w.date) <= new Date(dateTo))
+  );
+  const totalWage = filteredWages.reduce((sum, w) => sum + w.amount, 0);
 
   const getWorkerName = (workerId: string) => workers.find(w => w.id === workerId)?.name || "";
   const getStoreName = (storeId: string) => stores.find(s => s.id === storeId)?.name || "";
@@ -123,6 +136,7 @@ export default function WorkshiftsPage() {
             <th className="p-2 text-left">Dolgozó</th>
             <th className="p-2 text-left">Üzlet</th>
             <th className="p-2 text-left">Dátum</th>
+            <th className="p-2 text-left">Megjegyzés</th>
             <th className="p-2 text-left">Jelen volt</th>
           </tr>
         </thead>
@@ -132,6 +146,7 @@ export default function WorkshiftsPage() {
               <td className="p-2">{getWorkerName(ws.workerId)}</td>
               <td className="p-2">{getStoreName(ws.storeId)}</td>
               <td className="p-2">{new Date(ws.date).toLocaleDateString()}</td>
+              <td className="p-2">{ws.note || "-"}</td>
               <td className="p-2 flex items-center gap-2">
                 <span className="text-green-600 font-bold">Igen</span>
                 <Dialog
@@ -183,6 +198,58 @@ export default function WorkshiftsPage() {
           )}
         </tbody>
       </table>
+      {/* Dátumtartomány szerinti wage összesítő */}
+      {selectedWorker && (
+        <div className="mt-8 p-4 border rounded bg-muted/30">
+          <h2 className="text-lg font-semibold mb-2">Munkabér összesítő ({workers.find(w => w.id === selectedWorker)?.name || ""})</h2>
+          <div className="flex gap-4 mb-4">
+            <div>
+              <Label htmlFor="wage-date-from">Dátum -tól</Label>
+              <Input
+                id="wage-date-from"
+                type="date"
+                value={dateFrom}
+                onChange={e => setDateFrom(e.target.value)}
+                className="w-full border rounded px-3 py-2"
+              />
+            </div>
+            <div>
+              <Label htmlFor="wage-date-to">Dátum -ig</Label>
+              <Input
+                id="wage-date-to"
+                type="date"
+                value={dateTo}
+                onChange={e => setDateTo(e.target.value)}
+                className="w-full border rounded px-3 py-2"
+              />
+            </div>
+          </div>
+          <table className="w-full border rounded mb-2">
+            <thead>
+              <tr className="bg-muted">
+                <th className="p-2 text-left">Dátum</th>
+                <th className="p-2 text-left">Összeg</th>
+                <th className="p-2 text-left">Megjegyzés</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredWages.map(w => (
+                <tr key={w.id} className="border-t">
+                  <td className="p-2">{new Date(w.date).toLocaleDateString()}</td>
+                  <td className="p-2">{w.amount.toLocaleString()} Ft</td>
+                  <td className="p-2">{w.workShift?.note ?? "-"}</td>
+                </tr>
+              ))}
+              {filteredWages.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="p-2 text-muted-foreground text-center">Nincs munkabér ebben az időszakban.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+          <div className="font-bold">Teljes munkabér: {totalWage.toLocaleString()} Ft</div>
+        </div>
+      )}
     </div>
   );
 } 

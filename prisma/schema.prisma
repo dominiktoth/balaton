@@ -33,7 +33,7 @@ model Store {
     User      User[]
     incomes   Income[]
     workShifts WorkShift[]
-    workers   Worker[]
+    workers   Worker[]  @relation("WorkerStores")
 }
 
 model Product {
@@ -118,9 +118,10 @@ model Income {
 model Worker {
     id        String      @id @default(uuid())
     name      String
-    store     Store?      @relation(fields: [storeId], references: [id])
-    storeId   String?
+    stores    Store[]     @relation("WorkerStores")
     shifts    WorkShift[]
+    dailyWage Float?
+    wages     Wage[]
     createdAt DateTime    @default(now())
     updatedAt DateTime    @updatedAt
 }
@@ -132,6 +133,21 @@ model WorkShift {
     store     Store    @relation(fields: [storeId], references: [id])
     storeId   String
     date      DateTime
+    note      String?
+    wage      Wage?
+    wageId    String?
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
+}
+
+model Wage {
+    id         String     @id @default(uuid())
+    worker     Worker     @relation(fields: [workerId], references: [id])
+    workerId   String
+    workShift  WorkShift? @relation(fields: [workShiftId], references: [id], onDelete: Cascade)
+    workShiftId String?   @unique
+    date       DateTime
+    amount     Float
+    createdAt  DateTime   @default(now())
+    updatedAt  DateTime   @updatedAt
 }

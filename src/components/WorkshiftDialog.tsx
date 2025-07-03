@@ -21,6 +21,7 @@ export function WorkshiftDialog({ stores, onSuccess }: {
   const [date, setDate] = useState('');
   const [present, setPresent] = useState<{ [workerId: string]: boolean }>({});
   const [open, setOpen] = useState(false);
+  const [note, setNote] = useState("");
 
   // Lekérjük az adott üzlet dolgozóit
   const { data: workers = [] } = api.worker.getWorkersByStore.useQuery({ storeId }, { enabled: !!storeId });
@@ -32,18 +33,36 @@ export function WorkshiftDialog({ stores, onSuccess }: {
   );
 
   // Pre-fill jelenlét, ha már van rögzítve
-  useEffect(() => {
-    if (existingWorkshifts && existingWorkshifts.length > 0) {
-      const newPresent: { [workerId: string]: boolean } = {};
-      for (const ws of existingWorkshifts as { workerId: string }[]) {
-        newPresent[ws.workerId] = true;
-      }
-      setPresent((prev) => ({ ...prev, ...newPresent }));
-    }
-  }, [existingWorkshifts]);
+// Reset on store/date change
+useEffect(() => {
+  // Reseteljük a jelenlétet, ha változik az üzlet vagy dátum
+  setPresent({});
+}, [storeId, date]);
 
-  const { mutateAsync: createWorkShift, isPending: isCreating } = api.workshift.createWorkShift.useMutation();
-  const { mutateAsync: deleteWorkShift } = api.workshift.deleteWorkShift.useMutation();
+useEffect(() => {
+  if (existingWorkshifts.length > 0) {
+    const newPresent: { [workerId: string]: boolean } = {};
+    for (const ws of existingWorkshifts) {
+      newPresent[ws.workerId] = true;
+    }
+    setPresent(newPresent);
+  }
+}, [existingWorkshifts]);
+
+  
+  
+
+  const utils = api.useUtils();
+  const { mutateAsync: createWorkShift, isPending: isCreating } = api.workshift.createWorkShift.useMutation({
+    onSuccess: () => {
+      utils.worker.getAllWages.invalidate();
+    },
+  });
+  const { mutateAsync: deleteWorkShift } = api.workshift.deleteWorkShift.useMutation({
+    onSuccess: () => {
+      utils.worker.getAllWages.invalidate();
+    },
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,7 +72,7 @@ export function WorkshiftDialog({ stores, onSuccess }: {
       const isPresent = present[worker.id];
       const existing = (existingWorkshifts as { workerId: string; id: string }[]).find(ws => ws.workerId === worker.id);
       if (isPresent && !existing) {
-        promises.push(createWorkShift({ workerId: worker.id, storeId, date }));
+        promises.push(createWorkShift({ workerId: worker.id, storeId, date, note: note || undefined }));
       } else if (!isPresent && existing) {
         promises.push(deleteWorkShift({ id: existing.id }));
       }
@@ -62,6 +81,7 @@ export function WorkshiftDialog({ stores, onSuccess }: {
     setStoreId('');
     setDate('');
     setPresent({});
+    setNote("");
     setOpen(false);
     onSuccess?.();
     void refetchExisting();
@@ -107,6 +127,16 @@ export function WorkshiftDialog({ stores, onSuccess }: {
                   required
                 />
               </label>
+            </div>
+            <div>
+              <Label className="mb-2" htmlFor="workshift-note">Megjegyzés (opcionális)</Label>
+              <Input
+                id="workshift-note"
+                type="text"
+                value={note}
+                onChange={e => setNote(e.target.value)}
+                placeholder="Pl. helyettesítés, extra info..."
+              />
             </div>
             <div>
               <Label className="mb-2">Dolgozók jelenléte</Label>
