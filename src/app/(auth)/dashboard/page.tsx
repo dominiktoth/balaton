@@ -214,6 +214,10 @@ export default function DashboardPage() {
                   amount: income.amount,
                 }))
               }
+              onBarClick={(date) => {
+                setSelectedDate(date);
+                setSelectedStoreId("all");
+              }}
             />
           </div>
         </div>
