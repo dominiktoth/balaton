@@ -29,10 +29,12 @@ export function ChartAreaInteractive({
   storeId,
   expenses = [],
   incomes = [],
+  onBarClick,
 }: {
   storeId: string
   expenses: { date: string; storeId: string; amount: number }[]
   incomes?: { date: string; storeId: string; amount: number }[]
+  onBarClick?: (date: string) => void
 }) {
   const isMobile = useIsMobile()
   const [timeRange, setTimeRange] = React.useState("90d")
@@ -150,7 +152,16 @@ export function ChartAreaInteractive({
           }}
           className="aspect-auto h-[250px] w-full"
         >
-<BarChart data={chartData} barSize={24}   margin={{ top: 10, right: 30, left: 0, bottom: 5 }}>
+<BarChart
+  data={chartData}
+  barSize={24}
+  margin={{ top: 10, right: 30, left: 60, bottom: 5 }}
+  onClick={(state) => {
+    if (onBarClick && state && state.activeLabel) {
+      onBarClick(state.activeLabel);
+    }
+  }}
+>
   <CartesianGrid vertical={false} />
   <XAxis
     dataKey="date"
@@ -169,7 +180,8 @@ export function ChartAreaInteractive({
   <YAxis
     tickLine={false}
     axisLine={false}
-    tickFormatter={(value) => `${value.toLocaleString()} Ft`}
+    tickFormatter={(value) => `${Number(value).toLocaleString("hu-HU")} Ft`}
+    domain={[0, 'auto']}
   />
   <ChartTooltip
     cursor={{ fill: "var(--muted)" }}
@@ -187,10 +199,10 @@ export function ChartAreaInteractive({
     }
   />
   <Bar
-    dataKey="expense" fill="var(--primary)" radius={[4, 4, 0, 0]} barSize={24}
+    dataKey="income" fill="#22c55e" radius={[4, 4, 0, 0]} barSize={24}
   />
   <Bar
-    dataKey="income" fill="#22c55e" radius={[4, 4, 0, 0]} barSize={24}
+    dataKey="expense" fill="var(--primary)" radius={[4, 4, 0, 0]} barSize={24}
   />
 </BarChart>
         </ChartContainer>
