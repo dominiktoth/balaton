@@ -70,7 +70,7 @@ export function WorkshiftDialog({ stores, onSuccess }: {
     for (const worker of workers as { id: string }[]) {
       const isPresent = present[worker.id];
       const note = notes[worker.id] || undefined;
-      const existing = (existingWorkshifts as { workerId: string; id: string }[]).find(ws => ws.workerId === worker.id);
+      const existing = (existingWorkshifts as { workerId: string; id: string; note: string }[]).find(ws => ws.workerId === worker.id);
       if (isPresent && !existing) {
         promises.push(createWorkShift({ workerId: worker.id, storeId, date, note }));
       } else if (!isPresent && existing) {
