@@ -20,8 +20,8 @@ export function WorkshiftDialog({ stores, onSuccess }: {
   const [storeId, setStoreId] = useState('');
   const [date, setDate] = useState('');
   const [present, setPresent] = useState<{ [workerId: string]: boolean }>({});
+  const [notes, setNotes] = useState<{ [workerId: string]: string }>({});
   const [open, setOpen] = useState(false);
-  const [note, setNote] = useState("");
 
   // Lekérjük az adott üzlet dolgozóit
   const { data: workers = [] } = api.worker.getWorkersByStore.useQuery({ storeId }, { enabled: !!storeId });
@@ -32,25 +32,24 @@ export function WorkshiftDialog({ stores, onSuccess }: {
     { enabled: !!storeId && !!date }
   );
 
-  // Pre-fill jelenlét, ha már van rögzítve
-// Reset on store/date change
-useEffect(() => {
-  // Reseteljük a jelenlétet, ha változik az üzlet vagy dátum
-  setPresent({});
-}, [storeId, date]);
+  // Reset jelenlét és megjegyzések, ha változik az üzlet vagy dátum
+  useEffect(() => {
+    setPresent({});
+    setNotes({});
+  }, [storeId, date]);
 
-useEffect(() => {
-  if (existingWorkshifts.length > 0) {
-    const newPresent: { [workerId: string]: boolean } = {};
-    for (const ws of existingWorkshifts) {
-      newPresent[ws.workerId] = true;
+  useEffect(() => {
+    if (existingWorkshifts.length > 0) {
+      const newPresent: { [workerId: string]: boolean } = {};
+      const newNotes: { [workerId: string]: string } = {};
+      for (const ws of existingWorkshifts) {
+        newPresent[ws.workerId] = true;
+        newNotes[ws.workerId] = ws.note || "";
+      }
+      setPresent(newPresent);
+      setNotes(newNotes);
     }
-    setPresent(newPresent);
-  }
-}, [existingWorkshifts]);
-
-  
-  
+  }, [existingWorkshifts]);
 
   const utils = api.useUtils();
   const { mutateAsync: createWorkShift, isPending: isCreating } = api.workshift.createWorkShift.useMutation({
@@ -70,18 +69,23 @@ useEffect(() => {
     const promises: Promise<unknown>[] = [];
     for (const worker of workers as { id: string }[]) {
       const isPresent = present[worker.id];
+      const note = notes[worker.id] || undefined;
       const existing = (existingWorkshifts as { workerId: string; id: string }[]).find(ws => ws.workerId === worker.id);
       if (isPresent && !existing) {
-        promises.push(createWorkShift({ workerId: worker.id, storeId, date, note: note || undefined }));
+        promises.push(createWorkShift({ workerId: worker.id, storeId, date, note }));
       } else if (!isPresent && existing) {
         promises.push(deleteWorkShift({ id: existing.id }));
+      } else if (isPresent && existing && existing.note !== note) {
+        // Ha már létezik, de változott a megjegyzés, töröljük és újra létrehozzuk (egyszerűbb, mint update-et írni)
+        promises.push(deleteWorkShift({ id: existing.id }));
+        promises.push(createWorkShift({ workerId: worker.id, storeId, date, note }));
       }
     }
     await Promise.all(promises);
     setStoreId('');
     setDate('');
     setPresent({});
-    setNote("");
+    setNotes({});
     setOpen(false);
     onSuccess?.();
     void refetchExisting();
@@ -129,17 +133,7 @@ useEffect(() => {
               </label>
             </div>
             <div>
-              <Label className="mb-2" htmlFor="workshift-note">Megjegyzés (opcionális)</Label>
-              <Input
-                id="workshift-note"
-                type="text"
-                value={note}
-                onChange={e => setNote(e.target.value)}
-                placeholder="Pl. helyettesítés, extra info..."
-              />
-            </div>
-            <div>
-              <Label className="mb-2">Dolgozók jelenléte</Label>
+              <Label className="mb-2">Dolgozók jelenléte és megjegyzés</Label>
               <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
                 {workers.map((worker) => {
                   const existing = existingWorkshifts.find(ws => ws.workerId === worker.id);
@@ -154,6 +148,14 @@ useEffect(() => {
                       <label htmlFor={`present-${worker.id}`} className="w-32 cursor-pointer">
                         {worker.name}
                       </label>
+                      <Input
+                        type="text"
+                        placeholder="Megjegyzés..."
+                        value={notes[worker.id] || ""}
+                        onChange={e => setNotes(prev => ({ ...prev, [worker.id]: e.target.value }))}
+                        className="w-48"
+                        disabled={!present[worker.id]}
+                      />
                       {existing && <span className="text-xs text-muted-foreground">(már rögzítve)</span>}
                     </div>
                   );
