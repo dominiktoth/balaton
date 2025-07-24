@@ -25,6 +25,16 @@ import {
 } from "~/components/ui/select"
 import { ToggleGroup, ToggleGroupItem } from "~/components/ui/toggle-group"
 
+// Helper function to format numbers in millions
+const formatToMillions = (value: number): string => {
+  if (value >= 1000000) {
+    return `${(value / 1000000).toFixed(1)}m`;
+  } else if (value >= 1000) {
+    return `${(value / 1000)}k`;
+  }
+  return value.toString();
+};
+
 export function ChartAreaInteractive({
   storeId,
   expenses = [],
@@ -105,6 +115,19 @@ export function ChartAreaInteractive({
     return Object.values(map).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
   }, [filteredExpenses, filteredIncomes])
 
+  // Calculate Y-axis ticks in 1 million increments
+  const yAxisTicks = React.useMemo(() => {
+    const maxValue = Math.max(
+      ...chartData.map(d => Math.max(d.expense, d.income))
+    );
+    const maxMillion = Math.ceil(maxValue / 1000000);
+    const ticks = [];
+    for (let i = 0; i <= maxMillion; i++) {
+      ticks.push(i * 1000000);
+    }
+    return ticks;
+  }, [chartData]);
+
   return (
     <Card className="@container/card">
       <CardHeader>
@@ -180,8 +203,9 @@ export function ChartAreaInteractive({
   <YAxis
     tickLine={false}
     axisLine={false}
-    tickFormatter={(value) => `${Number(value).toLocaleString("hu-HU")} Ft`}
+    tickFormatter={(value) => `${formatToMillions(Number(value))} Ft`}
     domain={[0, 'auto']}
+    ticks={yAxisTicks}
   />
   <ChartTooltip
     cursor={{ fill: "var(--muted)" }}
