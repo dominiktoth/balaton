@@ -40,11 +40,13 @@ export function ChartAreaInteractive({
   expenses = [],
   incomes = [],
   onBarClick,
+  year,
 }: {
   storeId: string
   expenses: { date: string; storeId: string; amount: number }[]
   incomes?: { date: string; storeId: string; amount: number }[]
   onBarClick?: (date: string) => void
+  year?: number
 }) {
   const isMobile = useIsMobile()
   const [timeRange, setTimeRange] = React.useState("90d")
@@ -55,28 +57,51 @@ export function ChartAreaInteractive({
     }
   }, [isMobile])
 
+  // Éves mód: hónaponkénti aggregáció a kiválasztott évre
+  const yearlyChartData = React.useMemo(() => {
+    if (!year) return null
+    const monthMap: Record<string, { date: string; expense: number; income: number }> = {}
+    const monthCount = year === new Date().getFullYear() ? new Date().getMonth() + 1 : 12
+    for (let m = 0; m < monthCount; m++) {
+      const key = `${year}-${String(m + 1).padStart(2, "0")}`
+      monthMap[key] = { date: key, expense: 0, income: 0 }
+    }
+    for (const e of expenses) {
+      if (storeId !== "all" && e.storeId !== storeId) continue
+      const d = new Date(e.date)
+      if (d.getFullYear() !== year) continue
+      const key = `${year}-${String(d.getMonth() + 1).padStart(2, "0")}`
+      if (monthMap[key]) monthMap[key].expense += e.amount
+    }
+    for (const i of (incomes || [])) {
+      if (storeId !== "all" && i.storeId !== storeId) continue
+      const d = new Date(i.date)
+      if (d.getFullYear() !== year) continue
+      const key = `${year}-${String(d.getMonth() + 1).padStart(2, "0")}`
+      if (monthMap[key]) monthMap[key].income += i.amount
+    }
+    return Object.values(monthMap)
+  }, [expenses, incomes, storeId, year])
+
   const filteredExpenses = React.useMemo(() => {
+    if (year) return []
     const referenceDate = new Date()
     const startDate = new Date(referenceDate)
-
     const days = timeRange === "7d" ? 7 : timeRange === "30d" ? 30 : 90
     startDate.setDate(referenceDate.getDate() - days)
-
     return expenses
       .filter((e) => {
         const date = new Date(e.date)
-        return (
-          date >= startDate &&
-          (storeId === "all" || e.storeId === storeId)
-        )
+        return date >= startDate && (storeId === "all" || e.storeId === storeId)
       })
       .map((e) => ({
         date: new Date(e.date).toISOString().split("T")[0],
         amount: e.amount,
       }))
-  }, [expenses, storeId, timeRange]) || [];
+  }, [expenses, storeId, timeRange, year]) || [];
 
   const filteredIncomes = React.useMemo(() => {
+    if (year) return []
     const referenceDate = new Date()
     const startDate = new Date(referenceDate)
     const days = timeRange === "7d" ? 7 : timeRange === "30d" ? 30 : 90
@@ -84,19 +109,16 @@ export function ChartAreaInteractive({
     return (incomes || [])
       .filter((i) => {
         const date = new Date(i.date)
-        return (
-          date >= startDate &&
-          (storeId === "all" || i.storeId === storeId)
-        )
+        return date >= startDate && (storeId === "all" || i.storeId === storeId)
       })
       .map((i) => ({
         date: new Date(i.date).toISOString().split("T")[0],
         amount: i.amount,
       }))
-  }, [incomes, storeId, timeRange]) || [];
+  }, [incomes, storeId, timeRange, year]) || [];
 
-  // Merge data by date for chart
-  const chartData = React.useMemo(() => {
+  // Napi adat merge (csak ha nem éves mód)
+  const dailyChartData = React.useMemo(() => {
     const map: Record<string, { date: string; expense: number; income: number }> = {}
     for (const e of filteredExpenses) {
       const dateKey = e?.date || '';
@@ -114,6 +136,8 @@ export function ChartAreaInteractive({
     }
     return Object.values(map).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
   }, [filteredExpenses, filteredIncomes])
+
+  const chartData = yearlyChartData ?? dailyChartData
 
   // Calculate Y-axis ticks in 1 million increments
   const yAxisTicks = React.useMemo(() => {
@@ -134,31 +158,33 @@ export function ChartAreaInteractive({
         <CardTitle>Kiadások és bevételek alakulása</CardTitle>
         <CardDescription>
           {storeId === "all" ? "Összes bolt" : `Bolt azonosító: ${storeId}`} –
-          Utolsó {timeRange}
+          {year ? ` ${year}. év (havi bontás)` : ` Utolsó ${timeRange}`}
         </CardDescription>
-        <CardAction>
-          <ToggleGroup
-            type="single"
-            value={timeRange}
-            onValueChange={(val) => val && setTimeRange(val)}
-            variant="outline"
-            className="hidden @[767px]/card:flex"
-          >
-            <ToggleGroupItem value="90d">90 nap</ToggleGroupItem>
-            <ToggleGroupItem value="30d">30 nap</ToggleGroupItem>
-            <ToggleGroupItem value="7d">7 nap</ToggleGroupItem>
-          </ToggleGroup>
-          <Select value={timeRange} onValueChange={(val) => setTimeRange(val)}>
-            <SelectTrigger className="w-40 @[767px]/card:hidden" size="sm">
-              <SelectValue placeholder="Időtartomány kiválasztása" />
-            </SelectTrigger>
-            <SelectContent className="rounded-xl">
-              <SelectItem value="90d">Utolsó 90 nap</SelectItem>
-              <SelectItem value="30d">Utolsó 30 nap</SelectItem>
-              <SelectItem value="7d">Utolsó 7 nap</SelectItem>
-            </SelectContent>
-          </Select>
-        </CardAction>
+        {!year && (
+          <CardAction>
+            <ToggleGroup
+              type="single"
+              value={timeRange}
+              onValueChange={(val) => val && setTimeRange(val)}
+              variant="outline"
+              className="hidden @[767px]/card:flex"
+            >
+              <ToggleGroupItem value="90d">90 nap</ToggleGroupItem>
+              <ToggleGroupItem value="30d">30 nap</ToggleGroupItem>
+              <ToggleGroupItem value="7d">7 nap</ToggleGroupItem>
+            </ToggleGroup>
+            <Select value={timeRange} onValueChange={(val) => setTimeRange(val)}>
+              <SelectTrigger className="w-40 @[767px]/card:hidden" size="sm">
+                <SelectValue placeholder="Időtartomány kiválasztása" />
+              </SelectTrigger>
+              <SelectContent className="rounded-xl">
+                <SelectItem value="90d">Utolsó 90 nap</SelectItem>
+                <SelectItem value="30d">Utolsó 30 nap</SelectItem>
+                <SelectItem value="7d">Utolsó 7 nap</SelectItem>
+              </SelectContent>
+            </Select>
+          </CardAction>
+        )}
       </CardHeader>
 
       <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
@@ -193,12 +219,16 @@ export function ChartAreaInteractive({
     tickMargin={8}
     minTickGap={32}
     interval="preserveStartEnd"
-    tickFormatter={(value) =>
-      new Date(value).toLocaleDateString("hu-HU", {
+    tickFormatter={(value: string) => {
+      if (year) {
+        const d = new Date(`${value}-01`)
+        return d.toLocaleDateString("hu-HU", { month: "short" })
+      }
+      return new Date(value).toLocaleDateString("hu-HU", {
         month: "short",
         day: "numeric",
       })
-    }
+    }}
   />
   <YAxis
     tickLine={false}
@@ -212,12 +242,16 @@ export function ChartAreaInteractive({
     defaultIndex={isMobile ? -1 : 10}
     content={
       <ChartTooltipContent
-        labelFormatter={(value: string | number | Date) =>
-          new Date(value).toLocaleDateString("hu-HU", {
+        labelFormatter={(value: string | number | Date) => {
+          if (year) {
+            const d = new Date(`${String(value)}-01`)
+            return d.toLocaleDateString("hu-HU", { year: "numeric", month: "long" })
+          }
+          return new Date(value).toLocaleDateString("hu-HU", {
             month: "short",
             day: "numeric",
           })
-        }
+        }}
         indicator="dashed"
       />
     }

@@ -16,6 +16,9 @@ import { Button } from "~/components/ui/button";
 export default function DashboardPage() {
   const [selectedStoreId, setSelectedStoreId] = useState<string>("all");
   const [selectedDate, setSelectedDate] = useState<string>("");
+  const currentYear = new Date().getFullYear();
+  const [selectedYear, setSelectedYear] = useState<number>(currentYear);
+  const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - i);
 
   const { data: stores, isLoading } = api.store.getAllStores.useQuery();
   const { data: expenses, isLoading: isExpensesLoading, refetch: refetchExpenses } =
@@ -80,12 +83,13 @@ export default function DashboardPage() {
     return new Date().toISOString().split('T')[0];
   }
 
-  // Dátum szűrés: ha nincs selectedDate, akkor az aktuális év adatait mutatjuk
+  // Dátum szűrés: ha nincs selectedDate, akkor a kiválasztott év adatait mutatjuk
   const now = new Date();
-  const yearStart = new Date(now.getFullYear(), 0, 1);
+  const yearStart = new Date(selectedYear, 0, 1);
+  const yearEnd = selectedYear === currentYear ? now : new Date(selectedYear, 11, 31);
   const filterDateRange = selectedDate
     ? { from: new Date(selectedDate), to: new Date(selectedDate) }
-    : { from: yearStart, to: now };
+    : { from: yearStart, to: yearEnd };
 
   const isInRange = (date: string | Date | undefined) => {
     if (!date) return false;
@@ -139,6 +143,24 @@ export default function DashboardPage() {
               </TabsList>
             </div>
           </Tabs>
+
+          {/* Year selector */}
+          <div className="px-4 lg:px-6 flex items-center gap-2">
+            <Label htmlFor="year-select">Év</Label>
+            <select
+              id="year-select"
+              value={selectedYear}
+              onChange={e => {
+                setSelectedYear(Number(e.target.value));
+                setSelectedDate("");
+              }}
+              className="border-input bg-background rounded-md border px-3 py-1.5 text-sm shadow-sm"
+            >
+              {availableYears.map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
 
           {/* Dialogs for income, expense, and workshift */}
           <div className="flex gap-4 px-4 lg:px-6">
@@ -200,6 +222,7 @@ export default function DashboardPage() {
           <div className="px-4 lg:px-6">
             <ChartAreaInteractive
               storeId={selectedStoreId}
+              year={selectedYear}
               expenses={
                 (expenses || []).map((expense) => ({
                   date: typeof expense.date === 'string' ? expense.date : expense.date.toISOString(),
@@ -215,8 +238,10 @@ export default function DashboardPage() {
                 }))
               }
               onBarClick={(date) => {
-                setSelectedDate(date);
-                setSelectedStoreId("all");
+                if (!selectedYear) {
+                  setSelectedDate(date);
+                  setSelectedStoreId("all");
+                }
               }}
             />
           </div>
