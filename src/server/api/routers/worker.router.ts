@@ -10,9 +10,11 @@ export const workerRouter = createTRPCRouter({
       return createWorker({ name: input.name, storeIds: input.storeIds, dailyWage: input.dailyWage });
     }),
 
-  getWorkers: protectedProcedure.query(async () => {
-    return getWorkers();
-  }),
+  getWorkers: protectedProcedure
+    .input(z.object({ strandSlug: z.string().optional() }).optional())
+    .query(async ({ input }) => {
+      return getWorkers(input?.strandSlug);
+    }),
 
   getWorkerById: protectedProcedure
     .input(z.object({ workerId: z.string() }))
@@ -38,21 +40,40 @@ export const workerRouter = createTRPCRouter({
       return updateWorker({ id: input.id, name: input.name, storeIds: input.storeIds, dailyWage: input.dailyWage });
     }),
 
-  getAllWages: protectedProcedure.query(async () => {
-    return db.wage.findMany({
-      select: {
-        id: true,
-        amount: true,
-        date: true,
-        workerId: true,
-        workShift: {
-          select: {
-            storeId: true,
-            note: true,
+  getAllWages: protectedProcedure
+    .input(z.object({ strandSlug: z.string().optional() }).optional())
+    .query(async ({ input }) => {
+      return db.wage.findMany({
+        where: input?.strandSlug
+          ? { workShift: { store: { strand: { slug: input.strandSlug } } } }
+          : undefined,
+        select: {
+          id: true,
+          amount: true,
+          date: true,
+          workerId: true,
+          paid: true,
+          paidAt: true,
+          workShift: {
+            select: {
+              storeId: true,
+              note: true,
+            },
           },
         },
-      },
-      orderBy: { date: "desc" },
-    });
-  }),
-}); 
+        orderBy: { date: "desc" },
+      });
+    }),
+
+  setWagePaid: protectedProcedure
+    .input(z.object({ id: z.string(), paid: z.boolean() }))
+    .mutation(async ({ input }) => {
+      return db.wage.update({
+        where: { id: input.id },
+        data: {
+          paid: input.paid,
+          paidAt: input.paid ? new Date() : null,
+        },
+      });
+    }),
+});

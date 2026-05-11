@@ -5,17 +5,18 @@ import { createTRPCRouter, protectedProcedure } from '../trpc';
 
 export const storeRouter = createTRPCRouter({
   createStore: protectedProcedure
-    .input(z.object({ name: z.string() }))
+    .input(z.object({ name: z.string(), strandId: z.string() }))
     .mutation(async ({ input }) => {
-      return createStore(input.name);
+      return createStore(input.name, input.strandId);
     }),
-  getAllStores: protectedProcedure.query(async () => {
-    return getAllStores();
-  }),
-    deleteStore: protectedProcedure
-        .input(z.object({ id: z.string() }))
-        .mutation(async ({ input }) => {
-        return deleteStore(input.id);
-        }),
-  // Define other procedures and link them to service methods here
+  getAllStores: protectedProcedure
+    .input(z.object({ strandSlug: z.string().optional() }).optional())
+    .query(async ({ input }) => {
+      return getAllStores(input?.strandSlug);
+    }),
+  deleteStore: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input }) => {
+      return deleteStore(input.id);
+    }),
 });

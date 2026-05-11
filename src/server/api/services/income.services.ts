@@ -13,8 +13,9 @@ export async function getIncomesByStore(storeId: string) {
   });
 }
 
-export async function getAllIncomes() {
+export async function getAllIncomes(strandSlug?: string) {
   return db.income.findMany({
+    where: strandSlug ? { store: { strand: { slug: strandSlug } } } : undefined,
     orderBy: { date: 'desc' },
   });
 }

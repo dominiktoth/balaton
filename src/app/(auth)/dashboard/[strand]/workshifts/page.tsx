@@ -1,9 +1,11 @@
 "use client";
 import { useState } from "react";
+import { useParams } from "next/navigation";
 import { api } from "~/trpc/react";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
 import { Button } from "~/components/ui/button";
+import { IconCheck, IconX } from "@tabler/icons-react";
 import {
   Dialog,
   DialogTrigger,
@@ -27,8 +29,11 @@ function getToday() {
 }
 
 export default function WorkshiftsPage() {
-  const { data: workers = [] } = api.worker.getWorkers.useQuery();
-  const { data: stores = [] } = api.store.getAllStores.useQuery();
+  const params = useParams<{ strand: string }>();
+  const strandSlug = params.strand;
+
+  const { data: workers = [] } = api.worker.getWorkers.useQuery({ strandSlug });
+  const { data: stores = [] } = api.store.getAllStores.useQuery({ strandSlug });
   const utils = api.useUtils();
 
   const [selectedWorker, setSelectedWorker] = useState("");
@@ -36,7 +41,11 @@ export default function WorkshiftsPage() {
   const [selectedDate, setSelectedDate] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const { data: allWages = [] } = api.worker.getAllWages.useQuery();
+  const { data: allWages = [], refetch: refetchWages } = api.worker.getAllWages.useQuery({ strandSlug });
+
+  const { mutate: setWagePaid } = api.worker.setWagePaid.useMutation({
+    onSuccess: () => void refetchWages(),
+  });
 
   // Fetch all workshifts for the selected worker, or all if none selected
   const { data: allWorkshifts = [], refetch: refetchWorkshifts } = api.workshift.getWorkShiftsByWorker.useQuery(
@@ -230,24 +239,48 @@ export default function WorkshiftsPage() {
                 <th className="p-2 text-left">Dátum</th>
                 <th className="p-2 text-left">Összeg</th>
                 <th className="p-2 text-left">Megjegyzés</th>
+                <th className="p-2 text-left">Kifizetve</th>
               </tr>
             </thead>
             <tbody>
               {filteredWages.map(w => (
-                <tr key={w.id} className="border-t">
+                <tr key={w.id} className={`border-t ${w.paid ? "bg-emerald-50/60" : ""}`}>
                   <td className="p-2">{new Date(w.date).toLocaleDateString()}</td>
                   <td className="p-2">{w.amount.toLocaleString()} Ft</td>
                   <td className="p-2">{w.workShift?.note ?? "-"}</td>
+                  <td className="p-2">
+                    <button
+                      type="button"
+                      onClick={() => setWagePaid({ id: w.id, paid: !w.paid })}
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition ${
+                        w.paid
+                          ? "border-emerald-300 bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                          : "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                      }`}
+                      title={w.paidAt ? `Kifizetve: ${new Date(w.paidAt).toLocaleString()}` : "Nincs kifizetve"}
+                    >
+                      {w.paid ? <IconCheck className="size-3.5" /> : <IconX className="size-3.5" />}
+                      {w.paid ? "Kifizetve" : "Függőben"}
+                    </button>
+                  </td>
                 </tr>
               ))}
               {filteredWages.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="p-2 text-muted-foreground text-center">Nincs munkabér ebben az időszakban.</td>
+                  <td colSpan={4} className="p-2 text-muted-foreground text-center">Nincs munkabér ebben az időszakban.</td>
                 </tr>
               )}
             </tbody>
           </table>
-          <div className="font-bold">Teljes munkabér: {totalWage.toLocaleString()} Ft</div>
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="font-bold">Teljes munkabér: {totalWage.toLocaleString()} Ft</div>
+            <div className="text-sm text-emerald-700">
+              Kifizetve: {filteredWages.filter(w => w.paid).reduce((s, w) => s + w.amount, 0).toLocaleString()} Ft
+            </div>
+            <div className="text-sm text-amber-700">
+              Függőben: {filteredWages.filter(w => !w.paid).reduce((s, w) => s + w.amount, 0).toLocaleString()} Ft
+            </div>
+          </div>
         </div>
       )}
     </div>

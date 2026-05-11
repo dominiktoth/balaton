@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useParams } from 'next/navigation';
 import { api } from '~/trpc/react';
 
 import {
@@ -15,14 +16,17 @@ import {
 
 import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
-import { Separator } from '~/components/ui/separator';
 
 const StoresPage = () => {
+  const params = useParams<{ strand: string }>();
+  const strandSlug = params.strand;
+
   const [storeName, setStoreName] = useState('');
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [storeToDelete, setStoreToDelete] = useState<null | { id: string; name: string }>(null);
 
-  const { data: stores, refetch, isFetching } = api.store.getAllStores.useQuery();
+  const { data: strand } = api.strand.getBySlug.useQuery({ slug: strandSlug });
+  const { data: stores, refetch, isFetching } = api.store.getAllStores.useQuery({ strandSlug });
 
   const { mutate: createStore, isPending: isCreating } = api.store.createStore.useMutation({
     onSuccess: () => {
@@ -41,14 +45,19 @@ const StoresPage = () => {
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!storeName.trim()) return;
-    createStore({ name: storeName });
+    if (!storeName.trim() || !strand) return;
+    createStore({ name: storeName, strandId: strand.id });
   };
 
   return (
     <div className="max-w-xl mx-auto py-10 px-4 md:px-0">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Boltok</h1>
+        <div>
+          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+            {strand?.name ?? "Strand"}
+          </p>
+          <h1 className="text-3xl font-bold">Boltok</h1>
+        </div>
         <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
           <DialogTrigger asChild>
             <Button>Új bolt hozzáadása</Button>

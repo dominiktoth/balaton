@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useParams } from "next/navigation"
 import { supabase } from "~/server/auth/supabaseClient"
 import { api } from "~/trpc/react"
 import { Label } from "~/components/ui/label"
@@ -19,6 +20,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card"
 import type { Store, User } from "@prisma/client"
 
 export default function AddUserPage() {
+  const params = useParams<{ strand: string }>()
+  const strandSlug = params.strand
+
   const [open, setOpen] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -29,7 +33,7 @@ export default function AddUserPage() {
   const [loading, setLoading] = useState(false)
 
   const createUser = api.user.createUser.useMutation()
-  const { data: stores, isLoading: storesLoading } = api.store.getAllStores.useQuery()
+  const { data: stores, isLoading: storesLoading } = api.store.getAllStores.useQuery({ strandSlug })
   const { data: users, isLoading: usersAreLoading, refetch } = api.user.getAll.useQuery()
 
   const handleValueChange = (value: string) => {

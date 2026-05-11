@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { useParams } from "next/navigation";
 import { api } from "~/trpc/react";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
@@ -23,7 +24,10 @@ type FinanceItem = {
 };
 
 export default function FinancesPage() {
-  const { data: stores = [] } = api.store.getAllStores.useQuery();
+  const params = useParams<{ strand: string }>();
+  const strandSlug = params.strand;
+
+  const { data: stores = [] } = api.store.getAllStores.useQuery({ strandSlug });
   const [selectedStore, setSelectedStore] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -33,8 +37,8 @@ export default function FinancesPage() {
   const [editType, setEditType] = useState<"income" | "expense" | null>(null);
 
   // Fetch incomes and expenses for the selected store and date range
-  const { data: incomes = [], refetch: refetchIncomes } = api.income.getAllIncomes.useQuery(undefined, { enabled: !!selectedStore });
-  const { data: expenses = [], refetch: refetchExpenses } = api.expense.getAllExpenses.useQuery(undefined, { enabled: !!selectedStore });
+  const { data: incomes = [], refetch: refetchIncomes } = api.income.getAllIncomes.useQuery({ strandSlug }, { enabled: !!selectedStore });
+  const { data: expenses = [], refetch: refetchExpenses } = api.expense.getAllExpenses.useQuery({ strandSlug }, { enabled: !!selectedStore });
 
   // Mutations
   const { mutate: updateIncome } = api.income.updateIncome.useMutation({

@@ -7,8 +7,11 @@ export const createExpense = async (amount: number, storeId: string, date?: Date
   });
 };
 
-export const getAllExpenses = async (): Promise<Prisma.ExpenseGetPayload<{ include: { store: true } }>[]> => {
+export const getAllExpenses = async (
+  strandSlug?: string,
+): Promise<Prisma.ExpenseGetPayload<{ include: { store: true } }>[]> => {
   return db.expense.findMany({
+    where: strandSlug ? { store: { strand: { slug: strandSlug } } } : undefined,
     orderBy: { date: 'desc' },
     include: {
       store: true,

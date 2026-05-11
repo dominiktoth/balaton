@@ -22,9 +22,20 @@ model User {
     updatedAt     DateTime  @updatedAt
 }
 
+model Strand {
+    id        String   @id @default(uuid())
+    name      String
+    slug      String   @unique
+    stores    Store[]
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
+
 model Store {
     id        String    @id @default(uuid())
     name      String
+    strand    Strand    @relation(fields: [strandId], references: [id])
+    strandId  String
     products  Product[]
     expenses  Expense[]
     createdAt DateTime  @default(now())
@@ -148,6 +159,8 @@ model Wage {
     workShiftId String?   @unique
     date       DateTime
     amount     Float
+    paid       Boolean    @default(false)
+    paidAt     DateTime?
     createdAt  DateTime   @default(now())
     updatedAt  DateTime   @updatedAt
 }

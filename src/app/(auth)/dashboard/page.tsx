@@ -1,250 +1,107 @@
-"use client";
-import { useEffect, useState } from "react";
-import { api } from "~/trpc/react";
-import { Tabs, TabsList, TabsTrigger } from "~/components/ui/tabs";
-import { SectionCards } from "~/components/section-cards";
-import { ChartAreaInteractive } from "~/components/chart-area-interactive";
-import { supabase } from "~/server/auth/supabaseClient";
-import React from "react";
-import { IncomeDialog } from "~/components/IncomeDialog";
-import { WorkshiftDialog } from "~/components/WorkshiftDialog";
-import { ExpenseDialog } from "~/components/ExpenseDialog";
-import { Input } from "~/components/ui/input";
-import { Label } from "~/components/ui/label";
-import { Button } from "~/components/ui/button";
+import Link from "next/link";
+import { IconBeach, IconArrowRight } from "@tabler/icons-react";
+import { getAllStrands } from "~/server/api/services/strand.service";
 
-export default function DashboardPage() {
-  const [selectedStoreId, setSelectedStoreId] = useState<string>("all");
-  const [selectedDate, setSelectedDate] = useState<string>("");
-  const currentYear = new Date().getFullYear();
-  const [selectedYear, setSelectedYear] = useState<number>(currentYear);
-  const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - i);
-
-  const { data: stores, isLoading } = api.store.getAllStores.useQuery();
-  const { data: expenses, isLoading: isExpensesLoading, refetch: refetchExpenses } =
-    api.expense.getAllExpenses.useQuery();
-  const { data: todayTotal = 0 } = api.order.getStoreOrders.useQuery(
-    { storeId: selectedStoreId },
-    { enabled: selectedStoreId !== "all" },
-  );
-  const { data: allOrders = [] } = api.order.getStoreOrders.useQuery({
-    storeId: selectedStoreId,
-  });
-
-  // Fetch incomes
-  const { data: allIncomes = [], refetch: refetchAllIncomes } = api.income.getAllIncomes.useQuery(undefined, {
-    enabled: selectedStoreId === "all",
-  });
-  const { data: incomes = [], refetch: refetchIncomes } = api.income.getIncomesByStore.useQuery(
-    { storeId: selectedStoreId },
-    { enabled: selectedStoreId !== "all" && !!selectedStoreId }
-  );
-
-  // Use correct incomes array for chart and summary
-  const incomesToShow = selectedStoreId === "all" ? allIncomes : incomes;
-
-  // Debug: log incomesToShow
-  console.log('incomesToShow', incomesToShow);
-
-  // Fetch workers
-  const { data: workers = [], refetch: refetchWorkers } = api.worker.getWorkers.useQuery();
-
-  // Fetch wages
-  const { data: allWages = [] } = api.worker.getAllWages.useQuery();
-
-  // Refetch all relevant data after dialog actions
-  const handleDataRefresh = () => {
-    void refetchExpenses();
-    void refetchIncomes();
-    void refetchAllIncomes();
-    void refetchWorkers();
-  };
-
-  const [user, setUser] = React.useState<{
-    name: string;
-    email: string;
-    avatar: string;
-  } | null>(null);
-
-  React.useEffect(() => {
-    supabase.auth.getUser().then((response) => {
-      if (response.data?.user) {
-        setUser({
-          name: response.data.user.email || "Unknown",
-          email: response.data.user.role || "Unknown",
-          avatar: response.data.user.user_metadata.avatar_url || "",
-        });
-      }
-    });
-  }, []);
-
-  // Helper to get today as YYYY-MM-DD
-  function getToday() {
-    return new Date().toISOString().split('T')[0];
+const STRAND_ART: Record<
+  string,
+  {
+    gradient: string;
+    accent: string;
+    blurb: string;
   }
+> = {
+  balatonvilagos: {
+    gradient: "from-sky-500 via-cyan-400 to-emerald-300",
+    accent: "shadow-cyan-300/60",
+    blurb: "A déli part hangulata",
+  },
+  tihany: {
+    gradient: "from-indigo-600 via-violet-500 to-rose-400",
+    accent: "shadow-violet-400/60",
+    blurb: "A félsziget panorámája",
+  },
+};
 
-  // Dátum szűrés: ha nincs selectedDate, akkor a kiválasztott év adatait mutatjuk
-  const now = new Date();
-  const yearStart = new Date(selectedYear, 0, 1);
-  const yearEnd = selectedYear === currentYear ? now : new Date(selectedYear, 11, 31);
-  const filterDateRange = selectedDate
-    ? { from: new Date(selectedDate), to: new Date(selectedDate) }
-    : { from: yearStart, to: yearEnd };
+const FALLBACK_ART = {
+  gradient: "from-slate-700 via-slate-500 to-slate-300",
+  accent: "shadow-slate-400/60",
+  blurb: "Strand",
+};
 
-  const isInRange = (date: string | Date | undefined) => {
-    if (!date) return false;
-    const d = typeof date === 'string' ? new Date(date) : date;
-    // csak a dátumot nézzük, időt nem
-    const dYMD = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    const fromYMD = new Date(filterDateRange.from.getFullYear(), filterDateRange.from.getMonth(), filterDateRange.from.getDate());
-    const toYMD = new Date(filterDateRange.to.getFullYear(), filterDateRange.to.getMonth(), filterDateRange.to.getDate());
-    return dYMD >= fromYMD && dYMD <= toYMD;
-  };
-
-  const filteredIncomes = incomesToShow.filter(i => isInRange(i.date));
-  const filteredExpenses = (expenses || []).filter(e => isInRange(e.date));
-  const filteredWages = allWages.filter(w => isInRange(w.date));
-
-  // Calculate profit if incomes and expenses are available
-  const totalIncome = filteredIncomes.reduce((sum, i) => sum + i.amount, 0);
-  const totalExpense = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
-  const profit = totalIncome - totalExpense;
+export default async function DashboardLandingPage() {
+  const strands = await getAllStrands();
 
   return (
-    <div className="flex flex-1 flex-col">
-      <div className="@container/main flex flex-1 flex-col gap-2">
-        <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
-          <Tabs
-            value={selectedStoreId}
-            onValueChange={(val) => setSelectedStoreId(val)}
-            className="px-4 lg:px-6"
-          >
-            <div className="relative">
-              <TabsList
-                className="scrollbar-hide flex w-full gap-2 overflow-x-auto px-1 pb-2"
-                style={{ WebkitOverflowScrolling: "touch" }}
+    <div className="relative min-h-screen overflow-hidden bg-slate-950 text-white">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(56,189,248,0.25),transparent_55%),radial-gradient(circle_at_80%_30%,rgba(167,139,250,0.25),transparent_55%),radial-gradient(circle_at_50%_90%,rgba(45,212,191,0.18),transparent_55%)]" />
+      <div className="pointer-events-none absolute -top-32 left-1/2 h-96 w-[120%] -translate-x-1/2 rotate-3 bg-gradient-to-r from-cyan-500/20 via-transparent to-violet-500/20 blur-3xl" />
+
+      <div className="relative z-10 flex min-h-screen flex-col items-center justify-center px-6 py-16">
+        <div className="animate-in fade-in slide-in-from-top-4 duration-700 flex flex-col items-center text-center">
+          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-1.5 text-xs uppercase tracking-[0.2em] text-white/70 backdrop-blur">
+            <IconBeach className="size-4 text-cyan-300" />
+            Balaton Admin
+          </div>
+          <h1 className="text-4xl font-semibold tracking-tight md:text-6xl">
+            Válassz strandot
+          </h1>
+          <p className="mt-4 max-w-xl text-base text-white/60 md:text-lg">
+            Mindkét strand külön kezeli a boltjait, dolgozóit és pénzügyeit.
+            Bármikor visszaválthatsz a bal oldali menüből.
+          </p>
+        </div>
+
+        <div className="mt-14 grid w-full max-w-5xl gap-6 md:grid-cols-2">
+          {strands.map((strand, idx) => {
+            const art = STRAND_ART[strand.slug] ?? FALLBACK_ART;
+            return (
+              <Link
+                key={strand.id}
+                href={`/dashboard/${strand.slug}`}
+                className="group relative block"
+                style={{ animationDelay: `${150 + idx * 120}ms` }}
               >
-                <TabsTrigger
-                  value="all"
-                  className="border-muted bg-background hover:bg-muted data-[state=active]:bg-primary data-[state=active]:border-primary min-w-max rounded-md border px-4 py-2 text-sm font-medium shadow-sm transition data-[state=active]:text-white"
+                <div
+                  className={`animate-in fade-in slide-in-from-bottom-6 fill-mode-backwards duration-700 relative overflow-hidden rounded-3xl border border-white/10 bg-white/5 p-8 backdrop-blur-xl transition-all duration-500 ease-out group-hover:-translate-y-2 group-hover:border-white/30 group-hover:bg-white/10 group-hover:shadow-2xl ${art.accent}`}
+                  style={{ animationDelay: `${150 + idx * 120}ms` }}
                 >
-                  Összes bolt
-                </TabsTrigger>
-                {!isLoading &&
-                  stores?.map((store) => (
-                    <TabsTrigger
-                      key={store.id}
-                      value={store.id}
-                      className="border-muted bg-background hover:bg-muted data-[state=active]:bg-primary data-[state=active]:border-primary min-w-max rounded-md border px-4 py-2 text-sm font-medium shadow-sm transition data-[state=active]:text-white"
-                    >
-                      {store.name}
-                    </TabsTrigger>
-                  ))}
-              </TabsList>
-            </div>
-          </Tabs>
+                  <div
+                    className={`absolute -right-16 -top-16 size-60 rounded-full bg-gradient-to-br ${art.gradient} opacity-40 blur-2xl transition-all duration-700 group-hover:scale-125 group-hover:opacity-60`}
+                  />
+                  <div
+                    className={`absolute -left-20 -bottom-24 size-72 rounded-full bg-gradient-to-tr ${art.gradient} opacity-20 blur-3xl transition-all duration-700 group-hover:opacity-40`}
+                  />
 
-          {/* Year selector */}
-          <div className="px-4 lg:px-6 flex items-center gap-2">
-            <Label htmlFor="year-select">Év</Label>
-            <select
-              id="year-select"
-              value={selectedYear}
-              onChange={e => {
-                setSelectedYear(Number(e.target.value));
-                setSelectedDate("");
-              }}
-              className="border-input bg-background rounded-md border px-3 py-1.5 text-sm shadow-sm"
-            >
-              {availableYears.map(y => (
-                <option key={y} value={y}>{y}</option>
-              ))}
-            </select>
-          </div>
+                  <div className="relative flex h-full flex-col">
+                    <div className="flex items-start justify-between">
+                      <div
+                        className={`flex size-14 items-center justify-center rounded-2xl bg-gradient-to-br ${art.gradient} text-white shadow-lg transition-transform duration-500 group-hover:scale-110 group-hover:rotate-3`}
+                      >
+                        <IconBeach className="size-7" />
+                      </div>
+                      <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-white/60">
+                        Strand
+                      </span>
+                    </div>
 
-          {/* Dialogs for income, expense, and workshift */}
-          <div className="flex gap-4 px-4 lg:px-6">
-            {stores && stores.length > 0 && (
-              <>
-                <IncomeDialog stores={stores} onSuccess={handleDataRefresh} />
-                <ExpenseDialog stores={stores} onSuccess={handleDataRefresh} />
-              </>
-            )}
-            {stores && stores.length > 0 && workers && workers.length > 0 && (
-              <WorkshiftDialog stores={stores} onSuccess={handleDataRefresh} />
-            )}
-          </div>
+                    <div className="mt-10">
+                      <p className="text-sm uppercase tracking-[0.2em] text-white/40">
+                        {art.blurb}
+                      </p>
+                      <h2 className="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">
+                        {strand.name}
+                      </h2>
+                    </div>
 
-          {/* Date Picker */}
-          <div className="px-4 lg:px-6 mb-4 flex items-center gap-2">
-            <Label htmlFor="dashboard-date">Dátum</Label>
-            <Input
-              id="dashboard-date"
-              type="date"
-              value={selectedDate}
-              onChange={e => {
-                setSelectedDate(e.target.value);
-                setSelectedStoreId("all");
-              }}
-              className="w-48"
-            />
-            {selectedDate && (
-              <Button type="button" variant="secondary" size="sm" onClick={() => setSelectedDate("")}>Törlés</Button>
-            )}
-          </div>
-
-          {/* Summary Section */}
-          <div className="px-4 lg:px-6 flex gap-8 mt-4">
-            <div>
-              <div className="font-bold">Bevételek összesen</div>
-              <div>{totalIncome.toLocaleString()} Ft</div>
-            </div>
-            <div>
-              <div className="font-bold">Kiadások összesen</div>
-              <div>{totalExpense.toLocaleString()} Ft</div>
-            </div>
-            <div>
-              <div className="font-bold">Profit</div>
-              <div>{profit.toLocaleString()} Ft</div>
-            </div>
-          </div>
-
-          <SectionCards
-            storeId={selectedStoreId}
-            expenses={filteredExpenses}
-            incomes={filteredIncomes}
-            wages={filteredWages.map(wage => ({
-              ...wage,
-              date: typeof wage.date === 'string' ? wage.date : wage.date.toISOString(),
-              workShift: wage.workShift === null ? undefined : wage.workShift,
-            }))}
-          />
-          <div className="px-4 lg:px-6">
-            <ChartAreaInteractive
-              storeId={selectedStoreId}
-              year={selectedYear}
-              expenses={
-                (expenses || []).map((expense) => ({
-                  date: typeof expense.date === 'string' ? expense.date : expense.date.toISOString(),
-                  storeId: expense.storeId,
-                  amount: expense.amount,
-                }))
-              }
-              incomes={
-                (incomesToShow || []).map((income) => ({
-                  date: typeof income.date === 'string' ? income.date : income.date.toISOString(),
-                  storeId: income.storeId,
-                  amount: income.amount,
-                }))
-              }
-              onBarClick={(date) => {
-                if (!selectedYear) {
-                  setSelectedDate(date);
-                  setSelectedStoreId("all");
-                }
-              }}
-            />
-          </div>
+                    <div className="mt-10 inline-flex items-center gap-2 text-sm font-medium text-white/80 transition-all duration-300 group-hover:gap-4 group-hover:text-white">
+                      Belépés a felületre
+                      <IconArrowRight className="size-4 transition-transform duration-300 group-hover:translate-x-1" />
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            );
+          })}
         </div>
       </div>
     </div>

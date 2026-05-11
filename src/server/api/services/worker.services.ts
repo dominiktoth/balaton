@@ -13,8 +13,11 @@ export async function createWorker({ name, storeIds, dailyWage }: { name: string
   });
 }
 
-export async function getWorkers() {
+export async function getWorkers(strandSlug?: string) {
   return db.worker.findMany({
+    where: strandSlug
+      ? { stores: { some: { strand: { slug: strandSlug } } } }
+      : undefined,
     orderBy: { name: 'asc' },
     include: { stores: true },
   });

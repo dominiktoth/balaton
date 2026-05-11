@@ -23,9 +23,11 @@ export const incomeRouter = createTRPCRouter({
       return getIncomesByStore(input.storeId);
     }),
 
-  getAllIncomes: protectedProcedure.query(async () => {
-    return getAllIncomes();
-  }),
+  getAllIncomes: protectedProcedure
+    .input(z.object({ strandSlug: z.string().optional() }).optional())
+    .query(async ({ input }) => {
+      return getAllIncomes(input?.strandSlug);
+    }),
 
   getIncomeSummaryByStore: protectedProcedure
     .input(z.object({ storeId: z.string() }))

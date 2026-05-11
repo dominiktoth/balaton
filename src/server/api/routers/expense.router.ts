@@ -13,9 +13,11 @@ export const expenseRouter = createTRPCRouter({
       return createExpense(input.amount, input.storeId, input.date ? new Date(input.date) : undefined);
     }),
 
-  getAllExpenses: protectedProcedure.query(async () => {
-    return getAllExpenses();
-  }),
+  getAllExpenses: protectedProcedure
+    .input(z.object({ strandSlug: z.string().optional() }).optional())
+    .query(async ({ input }) => {
+      return getAllExpenses(input?.strandSlug);
+    }),
 
   deleteExpense: protectedProcedure
     .input(z.object({ id: z.string() }))

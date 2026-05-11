@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { useParams } from "next/navigation";
 import { api } from "~/trpc/react";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
@@ -16,8 +17,11 @@ import {
 import { MultiSelectCombobox } from "~/components/ui/multiselect-combobox";
 
 export default function WorkersPage() {
-  const { data: workers = [], refetch } = api.worker.getWorkers.useQuery();
-  const { data: stores = [] } = api.store.getAllStores.useQuery();
+  const params = useParams<{ strand: string }>();
+  const strandSlug = params.strand;
+
+  const { data: workers = [], refetch } = api.worker.getWorkers.useQuery({ strandSlug });
+  const { data: stores = [] } = api.store.getAllStores.useQuery({ strandSlug });
   const { mutate: createWorker, isPending: isCreating } = api.worker.createWorker.useMutation({
     onSuccess: () => {
       setName("");
