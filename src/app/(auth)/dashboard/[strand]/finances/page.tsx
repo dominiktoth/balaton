@@ -34,11 +34,12 @@ export default function FinancesPage() {
   const [tab, setTab] = useState("incomes");
   const [editItem, setEditItem] = useState<FinanceItem | null>(null);
   const [deleteItem, setDeleteItem] = useState<FinanceItem | null>(null);
-  const [editType, setEditType] = useState<"income" | "expense" | null>(null);
+  const [editType, setEditType] = useState<"income" | "expense" | "investment" | null>(null);
 
   // Fetch incomes and expenses for the selected store and date range
   const { data: incomes = [], refetch: refetchIncomes } = api.income.getAllIncomes.useQuery({ strandSlug }, { enabled: !!selectedStore });
   const { data: expenses = [], refetch: refetchExpenses } = api.expense.getAllExpenses.useQuery({ strandSlug }, { enabled: !!selectedStore });
+  const { data: investments = [], refetch: refetchInvestments } = api.investment.getAllInvestments.useQuery({ strandSlug }, { enabled: !!selectedStore });
 
   // Mutations
   const { mutate: updateIncome } = api.income.updateIncome.useMutation({
@@ -53,6 +54,12 @@ export default function FinancesPage() {
   const { mutate: deleteExpense } = api.expense.deleteExpense.useMutation({
     onSuccess: () => { setDeleteItem(null); refetchExpenses(); },
   });
+  const { mutate: updateInvestment } = api.investment.updateInvestment.useMutation({
+    onSuccess: () => { setEditItem(null); refetchInvestments(); },
+  });
+  const { mutate: deleteInvestment } = api.investment.deleteInvestment.useMutation({
+    onSuccess: () => { setDeleteItem(null); refetchInvestments(); },
+  });
 
   // Filter by store and date range
   const filterByStoreAndDate = (arr: FinanceItem[]) =>
@@ -64,12 +71,14 @@ export default function FinancesPage() {
 
   const filteredIncomes = filterByStoreAndDate(incomes);
   const filteredExpenses = filterByStoreAndDate(expenses);
+  const filteredInvestments = filterByStoreAndDate(investments);
+  const totalInvestments = filteredInvestments.reduce((sum, i) => sum + i.amount, 0);
 
   // Edit form state
   const [editAmount, setEditAmount] = useState("");
   const [editDate, setEditDate] = useState("");
 
-  const openEdit = (item: FinanceItem, type: "income" | "expense") => {
+  const openEdit = (item: FinanceItem, type: "income" | "expense" | "investment") => {
     setEditType(type);
     setEditItem(item);
     setEditAmount(item.amount.toString());
@@ -87,6 +96,8 @@ export default function FinancesPage() {
     if (!editItem) return;
     if (editType === "income") {
       updateIncome({ id: editItem.id, amount: parseFloat(editAmount), date: editDate });
+    } else if (editType === "investment") {
+      updateInvestment({ id: editItem.id, amount: parseFloat(editAmount), date: editDate });
     } else {
       updateExpense({ id: editItem.id, amount: parseFloat(editAmount), date: editDate });
     }
@@ -96,6 +107,8 @@ export default function FinancesPage() {
     if (!deleteItem) return;
     if (tab === "incomes") {
       deleteIncome({ id: deleteItem.id });
+    } else if (tab === "investments") {
+      deleteInvestment({ id: deleteItem.id });
     } else {
       deleteExpense({ id: deleteItem.id });
     }
@@ -103,7 +116,7 @@ export default function FinancesPage() {
 
   return (
     <div className="max-w-3xl mx-auto py-10 px-4 md:px-0">
-      <h1 className="text-3xl font-bold mb-6">Bolt bevételek és kiadások</h1>
+      <h1 className="text-3xl font-bold mb-6">Bolt bevételek, kiadások és befektetések</h1>
       <div className="flex gap-4 mb-6">
         <div>
           <Label>Üzlet</Label>
@@ -143,6 +156,7 @@ export default function FinancesPage() {
         <TabsList>
           <TabsTrigger value="incomes">Bevételek</TabsTrigger>
           <TabsTrigger value="expenses">Kiadások</TabsTrigger>
+          <TabsTrigger value="investments">Befektetések</TabsTrigger>
         </TabsList>
       </Tabs>
       {tab === "incomes" && (
@@ -201,13 +215,51 @@ export default function FinancesPage() {
           </tbody>
         </table>
       )}
+      {tab === "investments" && (
+        <>
+          <div className="mb-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            A befektetések <b>nem</b> számítanak bele a mérlegbe / profitba — itt külön követjük őket.
+          </div>
+          <table className="w-full border rounded mb-3">
+            <thead>
+              <tr className="bg-muted">
+                <th className="p-2 text-left">Dátum</th>
+                <th className="p-2 text-left">Összeg</th>
+                <th className="p-2 text-left">Megjegyzés</th>
+                <th className="p-2 text-left">Művelet</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredInvestments.map((investment) => (
+                <tr key={investment.id} className="border-t">
+                  <td className="p-2">{new Date(investment.date).toLocaleDateString()}</td>
+                  <td className="p-2">{investment.amount.toLocaleString()} Ft</td>
+                  <td className="p-2">{(investment as { note?: string | null }).note ?? "-"}</td>
+                  <td className="p-2">
+                    <Button size="sm" variant="outline" onClick={() => openEdit(investment, "investment")}>Szerkeszt</Button>
+                    <Button size="sm" variant="destructive" className="ml-2" onClick={() => setDeleteItem(investment)}>Törlés</Button>
+                  </td>
+                </tr>
+              ))}
+              {filteredInvestments.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="p-2 text-muted-foreground text-center">Nincs adat.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+          <div className="mb-8 font-bold">
+            Befektetések összesen: {totalInvestments.toLocaleString()} Ft
+          </div>
+        </>
+      )}
 
       {/* Edit Dialog */}
       <Dialog open={!!editItem} onOpenChange={open => !open && setEditItem(null)}>
         <DialogContent>
           <form onSubmit={handleEditSubmit}>
             <DialogHeader>
-              <DialogTitle>{editType === "income" ? "Bevétel szerkesztése" : "Kiadás szerkesztése"}</DialogTitle>
+              <DialogTitle>{editType === "income" ? "Bevétel szerkesztése" : editType === "investment" ? "Befektetés szerkesztése" : "Kiadás szerkesztése"}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 mt-4">
               <div>

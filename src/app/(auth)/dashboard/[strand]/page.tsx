@@ -10,6 +10,7 @@ import React from "react";
 import { IncomeDialog } from "~/components/IncomeDialog";
 import { WorkshiftDialog } from "~/components/WorkshiftDialog";
 import { ExpenseDialog } from "~/components/ExpenseDialog";
+import { InvestmentDialog } from "~/components/InvestmentDialog";
 import { StrandBanner } from "~/components/strand-banner";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
@@ -161,12 +162,13 @@ export default function DashboardPage() {
             </select>
           </div>
 
-          {/* Dialogs for income, expense, and workshift */}
-          <div className="flex gap-4 px-4 lg:px-6">
+          {/* Dialogs for income, expense, investment, and workshift */}
+          <div className="flex flex-wrap gap-4 px-4 lg:px-6">
             {stores && stores.length > 0 && (
               <>
                 <IncomeDialog stores={stores} onSuccess={handleDataRefresh} />
                 <ExpenseDialog stores={stores} onSuccess={handleDataRefresh} />
+                <InvestmentDialog stores={stores} onSuccess={handleDataRefresh} />
               </>
             )}
             {stores && stores.length > 0 && workers && workers.length > 0 && (
