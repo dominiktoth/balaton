@@ -10,6 +10,7 @@ import {
   IconUsers,
   IconClock,
   IconCurrencyForint,
+  IconPigMoney,
   IconChevronDown,
   IconCheck,
 } from "@tabler/icons-react"
@@ -45,6 +46,7 @@ function buildNav(strandSlug: string) {
     { title: "Dolgozók", url: `${base}/workers`, icon: IconUsers },
     { title: "Ledolgozott órák", url: `${base}/workshifts`, icon: IconClock },
     { title: "Pénzügyek", url: `${base}/finances`, icon: IconCurrencyForint },
+    { title: "Befektetések", url: `${base}/investments`, icon: IconPigMoney },
   ]
 }
 
