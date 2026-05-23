@@ -37,6 +37,14 @@ export async function createWorkShift({ workerId, storeId, date, note }: { worke
   });
 }
 
+export async function getAllWorkShifts(strandSlug?: string) {
+  return db.workShift.findMany({
+    where: strandSlug ? { store: { strand: { slug: strandSlug } } } : undefined,
+    orderBy: { date: 'desc' },
+    include: { worker: true, store: true },
+  });
+}
+
 export async function getWorkShiftsByStoreAndDate(storeId: string, date: Date) {
   if (!date || isNaN(date.getTime())) return [];
   return db.workShift.findMany({

@@ -57,21 +57,63 @@ export default function WorkersPage() {
   // Munkanapok rögzítése szekcióhoz
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [selectedStore, setSelectedStore] = useState<string>(""); // Explicitly type as string
-  const { data: workshiftsForDate = [], refetch: refetchWorkshiftsForDate, isLoading: isLoadingWorkshifts } = api.workshift.getWorkShiftsByStoreAndDate.useQuery(
-    { storeId: selectedStore, date: selectedDate ?? "" },
+  const workshiftQueryInput = { storeId: selectedStore, date: selectedDate ?? "" };
+  const { data: workshiftsForDate = [], isLoading: isLoadingWorkshifts } = api.workshift.getWorkShiftsByStoreAndDate.useQuery(
+    workshiftQueryInput,
     { enabled: !!selectedDate }
   );
   const utils = api.useUtils();
+
   const { mutate: createWorkShift } = api.workshift.createWorkShift.useMutation({
-    onSuccess: () => {
-      refetchWorkshiftsForDate();
-      utils.worker.getAllWages.invalidate();
+    onMutate: async (vars) => {
+      await utils.workshift.getWorkShiftsByStoreAndDate.cancel(workshiftQueryInput);
+      const prev = utils.workshift.getWorkShiftsByStoreAndDate.getData(workshiftQueryInput);
+      const optimistic = {
+        id: `optimistic-${vars.workerId}-${Date.now()}`,
+        workerId: vars.workerId,
+        storeId: vars.storeId,
+        date: new Date(vars.date),
+        note: vars.note ?? null,
+        wageId: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        worker: workers.find((w) => w.id === vars.workerId) ?? null,
+      };
+      utils.workshift.getWorkShiftsByStoreAndDate.setData(
+        workshiftQueryInput,
+        (old) => [...(old ?? []), optimistic as unknown as NonNullable<typeof old>[number]],
+      );
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) {
+        utils.workshift.getWorkShiftsByStoreAndDate.setData(workshiftQueryInput, ctx.prev);
+      }
+    },
+    onSettled: () => {
+      void utils.workshift.getWorkShiftsByStoreAndDate.invalidate(workshiftQueryInput);
+      void utils.worker.getAllWages.invalidate();
     },
   });
+
   const { mutate: deleteWorkShift } = api.workshift.deleteWorkShift.useMutation({
-    onSuccess: () => {
-      refetchWorkshiftsForDate();
-      utils.worker.getAllWages.invalidate();
+    onMutate: async (vars) => {
+      await utils.workshift.getWorkShiftsByStoreAndDate.cancel(workshiftQueryInput);
+      const prev = utils.workshift.getWorkShiftsByStoreAndDate.getData(workshiftQueryInput);
+      utils.workshift.getWorkShiftsByStoreAndDate.setData(
+        workshiftQueryInput,
+        (old) => (old ?? []).filter((ws) => ws.id !== vars.id),
+      );
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) {
+        utils.workshift.getWorkShiftsByStoreAndDate.setData(workshiftQueryInput, ctx.prev);
+      }
+    },
+    onSettled: () => {
+      void utils.workshift.getWorkShiftsByStoreAndDate.invalidate(workshiftQueryInput);
+      void utils.worker.getAllWages.invalidate();
     },
   });
 

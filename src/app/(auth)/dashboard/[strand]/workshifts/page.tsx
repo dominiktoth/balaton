@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { api } from "~/trpc/react";
 import { Input } from "~/components/ui/input";
@@ -16,16 +16,9 @@ import {
   DialogFooter,
 } from "~/components/ui/dialog";
 
-type Workshift = {
-  id: string;
-  workerId: string;
-  storeId: string;
-  date: string | Date;
-  note?: string | null;
-};
-
-function getToday() {
-  return new Date().toISOString().split('T')[0];
+function defaultSeasonStart() {
+  const y = new Date().getFullYear();
+  return `${y}-05-01`;
 }
 
 export default function WorkshiftsPage() {
@@ -34,77 +27,90 @@ export default function WorkshiftsPage() {
 
   const { data: workers = [] } = api.worker.getWorkers.useQuery({ strandSlug });
   const { data: stores = [] } = api.store.getAllStores.useQuery({ strandSlug });
-  const utils = api.useUtils();
+  const { data: allWorkshifts = [], refetch: refetchWorkshifts } =
+    api.workshift.getAll.useQuery({ strandSlug });
+  const { data: allWages = [], refetch: refetchWages } =
+    api.worker.getAllWages.useQuery({ strandSlug });
 
   const [selectedWorker, setSelectedWorker] = useState("");
   const [selectedStore, setSelectedStore] = useState("");
-  const [selectedDate, setSelectedDate] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const { data: allWages = [], refetch: refetchWages } = api.worker.getAllWages.useQuery({ strandSlug });
+  const [dateFrom, setDateFrom] = useState<string>(defaultSeasonStart());
+  const [dateTo, setDateTo] = useState<string>("");
 
   const { mutate: setWagePaid } = api.worker.setWagePaid.useMutation({
     onSuccess: () => void refetchWages(),
   });
 
-  // Fetch all workshifts for the selected worker, or all if none selected
-  const { data: allWorkshifts = [], refetch: refetchWorkshifts } = api.workshift.getWorkShiftsByWorker.useQuery(
-    selectedWorker ? { workerId: selectedWorker } : { workerId: "" },
-    {
-      enabled: !!selectedWorker,
-    }
-  );
-  // Fetch all workshifts for all workers if only date is selected
-  const { data: allWorkshiftsByDate = [], refetch: refetchWorkshiftsByDate } = api.workshift.getWorkShiftsByStoreAndDate.useQuery(
-    { storeId: "", date: selectedDate },
-    { enabled: !!selectedDate && !selectedWorker && !selectedStore }
-  );
+  const { mutate: deleteWorkShift, isPending: isDeleting } =
+    api.workshift.deleteWorkShift.useMutation({
+      onSuccess: () => {
+        void refetchWorkshifts();
+        void refetchWages();
+      },
+    });
 
-  const { mutate: deleteWorkShift, isPending: isDeleting } = api.workshift.deleteWorkShift.useMutation({
-    onSuccess: () => {
-      refetchWorkshifts();
-      refetchWorkshiftsByDate();
-    },
-  });
+  const [workshiftToDelete, setWorkshiftToDelete] = useState<
+    | null
+    | { id: string; date: string }
+  >(null);
 
-  const [workshiftToDelete, setWorkshiftToDelete] = useState<null | { id: string; date: string }>(null);
+  const inRange = (d: string | Date) => {
+    const t = new Date(d).getTime();
+    if (dateFrom && t < new Date(dateFrom).getTime()) return false;
+    if (dateTo && t > new Date(dateTo).getTime() + 86_400_000 - 1) return false; // include the whole "to" day
+    return true;
+  };
 
-  // Filtering logic
-  let displayWorkshifts: Workshift[] = [];
-  if (selectedWorker) {
-    displayWorkshifts = allWorkshifts.filter(ws =>
-      (!selectedStore || ws.storeId === selectedStore) &&
-      (!selectedDate || ws.date.toISOString().split('T')[0] === selectedDate)
+  const displayWorkshifts = useMemo(() => {
+    return allWorkshifts.filter(
+      (ws) =>
+        (!selectedWorker || ws.workerId === selectedWorker) &&
+        (!selectedStore || ws.storeId === selectedStore) &&
+        inRange(ws.date),
     );
-  } else if (selectedDate && !selectedWorker && !selectedStore) {
-    displayWorkshifts = allWorkshiftsByDate;
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allWorkshifts, selectedWorker, selectedStore, dateFrom, dateTo]);
 
-  // Wage szűrés: csak a kiválasztott dolgozóhoz és dátumtartományhoz tartozó Wage-ek
-  const filteredWages = allWages.filter(w =>
-    w.workerId === selectedWorker &&
-    (!dateFrom || new Date(w.date) >= new Date(dateFrom)) &&
-    (!dateTo || new Date(w.date) <= new Date(dateTo))
-  );
+  const filteredWages = useMemo(() => {
+    return allWages.filter(
+      (w) =>
+        (!selectedWorker || w.workerId === selectedWorker) &&
+        (!selectedStore || w.workShift?.storeId === selectedStore) &&
+        inRange(w.date),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allWages, selectedWorker, selectedStore, dateFrom, dateTo]);
+
   const totalWage = filteredWages.reduce((sum, w) => sum + w.amount, 0);
+  const paidTotal = filteredWages
+    .filter((w) => w.paid)
+    .reduce((s, w) => s + w.amount, 0);
+  const pendingTotal = filteredWages
+    .filter((w) => !w.paid)
+    .reduce((s, w) => s + w.amount, 0);
 
-  const getWorkerName = (workerId: string) => workers.find(w => w.id === workerId)?.name || "";
-  const getStoreName = (storeId: string) => stores.find(s => s.id === storeId)?.name || "";
+  const getWorkerName = (workerId: string) =>
+    workers.find((w) => w.id === workerId)?.name ?? "";
+  const getStoreName = (storeId: string) =>
+    stores.find((s) => s.id === storeId)?.name ?? "";
 
   return (
-    <div className="max-w-3xl mx-auto py-10 px-4 md:px-0">
-      <h1 className="text-3xl font-bold mb-6">Ledolgozott órák</h1>
-      <div className="flex gap-4 mb-6">
+    <div className="mx-auto max-w-3xl px-4 py-10 md:px-0">
+      <h1 className="mb-6 text-3xl font-bold">Ledolgozott órák</h1>
+
+      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
         <div>
           <Label>Dolgozó</Label>
           <select
             value={selectedWorker}
-            onChange={e => setSelectedWorker(e.target.value)}
-            className="w-full border rounded px-3 py-2"
+            onChange={(e) => setSelectedWorker(e.target.value)}
+            className="w-full rounded border bg-background px-3 py-2"
           >
             <option value="">Összes</option>
-            {workers.map(w => (
-              <option key={w.id} value={w.id}>{w.name}</option>
+            {workers.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.name}
+              </option>
             ))}
           </select>
         </div>
@@ -112,52 +118,75 @@ export default function WorkshiftsPage() {
           <Label>Üzlet</Label>
           <select
             value={selectedStore}
-            onChange={e => setSelectedStore(e.target.value)}
-            className="w-full border rounded px-3 py-2"
+            onChange={(e) => setSelectedStore(e.target.value)}
+            className="w-full rounded border bg-background px-3 py-2"
           >
             <option value="">Összes</option>
-            {stores.map(s => (
-              <option key={s.id} value={s.id}>{s.name}</option>
+            {stores.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
             ))}
           </select>
         </div>
         <div>
-          <Label htmlFor="workshift-date">Dátum</Label>
+          <Label htmlFor="ws-from">Dátum -tól</Label>
+          <Input
+            id="ws-from"
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="w-full"
+          />
+        </div>
+        <div>
+          <Label htmlFor="ws-to">Dátum -ig</Label>
           <div className="flex items-center gap-2">
-            <label htmlFor="workshift-date" style={{ display: "block", cursor: "pointer", flex: 1 }}>
-              <Input
-                id="workshift-date"
-                type="date"
-                value={selectedDate}
-                onChange={e => setSelectedDate(e.target.value)}
-                className="w-full border rounded px-3 py-2"
-              />
-            </label>
-            {selectedDate && (
-              <Button type="button" variant="secondary" size="sm" onClick={() => setSelectedDate("")}>Törlés</Button>
+            <Input
+              id="ws-to"
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="w-full"
+            />
+            {dateTo && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setDateTo("")}
+              >
+                ✕
+              </Button>
             )}
           </div>
         </div>
       </div>
-      <table className="w-full border rounded">
+
+      <div className="mb-2 text-sm text-muted-foreground">
+        {displayWorkshifts.length} bejegyzés
+        {dateFrom ? ` · ${dateFrom}` : ""}
+        {dateTo ? ` - ${dateTo}` : dateFrom ? " - " : ""}
+      </div>
+
+      <table className="mb-8 w-full rounded border">
         <thead>
           <tr className="bg-muted">
             <th className="p-2 text-left">Dolgozó</th>
             <th className="p-2 text-left">Üzlet</th>
             <th className="p-2 text-left">Dátum</th>
             <th className="p-2 text-left">Megjegyzés</th>
-            <th className="p-2 text-left">Jelen volt</th>
+            <th className="p-2 text-left">Művelet</th>
           </tr>
         </thead>
         <tbody>
-          {displayWorkshifts.map(ws => (
+          {displayWorkshifts.map((ws) => (
             <tr key={ws.id} className="border-t">
               <td className="p-2">{getWorkerName(ws.workerId)}</td>
               <td className="p-2">{getStoreName(ws.storeId)}</td>
               <td className="p-2">{new Date(ws.date).toLocaleDateString()}</td>
-              <td className="p-2">{ws.note || "-"}</td>
-              <td className="p-2 flex items-center gap-2">
-                <span className="text-green-600 font-bold">Igen</span>
+              <td className="p-2">{ws.note ?? "-"}</td>
+              <td className="p-2">
                 <Dialog
                   open={workshiftToDelete?.id === ws.id}
                   onOpenChange={(open) => !open && setWorkshiftToDelete(null)}
@@ -167,8 +196,15 @@ export default function WorkshiftsPage() {
                       variant="destructive"
                       size="sm"
                       disabled={isDeleting}
-                      onClick={() => setWorkshiftToDelete({ id: ws.id, date: typeof ws.date === 'string' ? ws.date : ws.date.toISOString() })}
-                      className="ml-2"
+                      onClick={() =>
+                        setWorkshiftToDelete({
+                          id: ws.id,
+                          date:
+                            typeof ws.date === "string"
+                              ? ws.date
+                              : ws.date.toISOString(),
+                        })
+                      }
                     >
                       Törlés
                     </Button>
@@ -177,11 +213,15 @@ export default function WorkshiftsPage() {
                     <DialogHeader>
                       <DialogTitle>Jelenlét törlése</DialogTitle>
                       <DialogDescription>
-                        Biztosan törölni szeretnéd ezt a jelenlétet? ({new Date(ws.date).toLocaleDateString()})
+                        Biztosan törölni szeretnéd ezt a jelenlétet? (
+                        {new Date(ws.date).toLocaleDateString()})
                       </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
-                      <Button variant="secondary" onClick={() => setWorkshiftToDelete(null)}>
+                      <Button
+                        variant="secondary"
+                        onClick={() => setWorkshiftToDelete(null)}
+                      >
                         Mégse
                       </Button>
                       <Button
@@ -202,87 +242,97 @@ export default function WorkshiftsPage() {
           ))}
           {displayWorkshifts.length === 0 && (
             <tr>
-              <td colSpan={4} className="p-2 text-muted-foreground text-center">Nincs adat.</td>
+              <td
+                colSpan={5}
+                className="p-3 text-center text-muted-foreground"
+              >
+                Nincs adat a kiválasztott szűrőkre.
+              </td>
             </tr>
           )}
         </tbody>
       </table>
-      {/* Dátumtartomány szerinti wage összesítő */}
-      {selectedWorker && (
-        <div className="mt-8 p-4 border rounded bg-muted/30">
-          <h2 className="text-lg font-semibold mb-2">Munkabér összesítő ({workers.find(w => w.id === selectedWorker)?.name || ""})</h2>
-          <div className="flex gap-4 mb-4">
-            <div>
-              <Label htmlFor="wage-date-from">Dátum -tól</Label>
-              <Input
-                id="wage-date-from"
-                type="date"
-                value={dateFrom}
-                onChange={e => setDateFrom(e.target.value)}
-                className="w-full border rounded px-3 py-2"
-              />
-            </div>
-            <div>
-              <Label htmlFor="wage-date-to">Dátum -ig</Label>
-              <Input
-                id="wage-date-to"
-                type="date"
-                value={dateTo}
-                onChange={e => setDateTo(e.target.value)}
-                className="w-full border rounded px-3 py-2"
-              />
-            </div>
-          </div>
-          <table className="w-full border rounded mb-2">
-            <thead>
-              <tr className="bg-muted">
-                <th className="p-2 text-left">Dátum</th>
-                <th className="p-2 text-left">Összeg</th>
-                <th className="p-2 text-left">Megjegyzés</th>
-                <th className="p-2 text-left">Kifizetve</th>
+
+      <div className="rounded border bg-muted/30 p-4">
+        <h2 className="mb-3 text-lg font-semibold">
+          Munkabér összesítő
+          {selectedWorker
+            ? ` (${workers.find((w) => w.id === selectedWorker)?.name ?? ""})`
+            : " (minden dolgozó)"}
+        </h2>
+        <table className="mb-2 w-full rounded border bg-background">
+          <thead>
+            <tr className="bg-muted">
+              <th className="p-2 text-left">Dátum</th>
+              {!selectedWorker && <th className="p-2 text-left">Dolgozó</th>}
+              <th className="p-2 text-left">Összeg</th>
+              <th className="p-2 text-left">Megjegyzés</th>
+              <th className="p-2 text-left">Kifizetve</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredWages.map((w) => (
+              <tr
+                key={w.id}
+                className={`border-t ${w.paid ? "bg-emerald-50/60" : ""}`}
+              >
+                <td className="p-2">
+                  {new Date(w.date).toLocaleDateString()}
+                </td>
+                {!selectedWorker && (
+                  <td className="p-2">{getWorkerName(w.workerId)}</td>
+                )}
+                <td className="p-2">{w.amount.toLocaleString()} Ft</td>
+                <td className="p-2">{w.workShift?.note ?? "-"}</td>
+                <td className="p-2">
+                  <button
+                    type="button"
+                    onClick={() => setWagePaid({ id: w.id, paid: !w.paid })}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition ${
+                      w.paid
+                        ? "border-emerald-300 bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                        : "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                    }`}
+                    title={
+                      w.paidAt
+                        ? `Kifizetve: ${new Date(w.paidAt).toLocaleString()}`
+                        : "Nincs kifizetve"
+                    }
+                  >
+                    {w.paid ? (
+                      <IconCheck className="size-3.5" />
+                    ) : (
+                      <IconX className="size-3.5" />
+                    )}
+                    {w.paid ? "Kifizetve" : "Függőben"}
+                  </button>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {filteredWages.map(w => (
-                <tr key={w.id} className={`border-t ${w.paid ? "bg-emerald-50/60" : ""}`}>
-                  <td className="p-2">{new Date(w.date).toLocaleDateString()}</td>
-                  <td className="p-2">{w.amount.toLocaleString()} Ft</td>
-                  <td className="p-2">{w.workShift?.note ?? "-"}</td>
-                  <td className="p-2">
-                    <button
-                      type="button"
-                      onClick={() => setWagePaid({ id: w.id, paid: !w.paid })}
-                      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition ${
-                        w.paid
-                          ? "border-emerald-300 bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
-                          : "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
-                      }`}
-                      title={w.paidAt ? `Kifizetve: ${new Date(w.paidAt).toLocaleString()}` : "Nincs kifizetve"}
-                    >
-                      {w.paid ? <IconCheck className="size-3.5" /> : <IconX className="size-3.5" />}
-                      {w.paid ? "Kifizetve" : "Függőben"}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {filteredWages.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="p-2 text-muted-foreground text-center">Nincs munkabér ebben az időszakban.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="font-bold">Teljes munkabér: {totalWage.toLocaleString()} Ft</div>
-            <div className="text-sm text-emerald-700">
-              Kifizetve: {filteredWages.filter(w => w.paid).reduce((s, w) => s + w.amount, 0).toLocaleString()} Ft
-            </div>
-            <div className="text-sm text-amber-700">
-              Függőben: {filteredWages.filter(w => !w.paid).reduce((s, w) => s + w.amount, 0).toLocaleString()} Ft
-            </div>
+            ))}
+            {filteredWages.length === 0 && (
+              <tr>
+                <td
+                  colSpan={selectedWorker ? 4 : 5}
+                  className="p-2 text-center text-muted-foreground"
+                >
+                  Nincs munkabér ebben az időszakban.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="font-bold">
+            Teljes munkabér: {totalWage.toLocaleString()} Ft
+          </div>
+          <div className="text-sm text-emerald-700">
+            Kifizetve: {paidTotal.toLocaleString()} Ft
+          </div>
+          <div className="text-sm text-amber-700">
+            Függőben: {pendingTotal.toLocaleString()} Ft
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
-} 
+}

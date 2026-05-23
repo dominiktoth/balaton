@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { createTRPCRouter, protectedProcedure } from '../trpc';
-import { createWorkShift, getWorkShiftsByStoreAndDate, getWorkShiftsByWorker, deleteWorkShift, getWorkShiftsForStoreAndDateAllWorkers } from '../services/workshift.services';
+import { createWorkShift, getWorkShiftsByStoreAndDate, getWorkShiftsByWorker, deleteWorkShift, getWorkShiftsForStoreAndDateAllWorkers, getAllWorkShifts } from '../services/workshift.services';
 
 export const workshiftRouter = createTRPCRouter({
   createWorkShift: protectedProcedure
@@ -17,6 +17,12 @@ export const workshiftRouter = createTRPCRouter({
         date: new Date(input.date),
         note: input.note,
       });
+    }),
+
+  getAll: protectedProcedure
+    .input(z.object({ strandSlug: z.string().optional() }).optional())
+    .query(async ({ input }) => {
+      return getAllWorkShifts(input?.strandSlug);
     }),
 
   getWorkShiftsByStoreAndDate: protectedProcedure
