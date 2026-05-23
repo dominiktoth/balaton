@@ -54,32 +54,30 @@ export default function WorkshiftsPage() {
     | { id: string; date: string }
   >(null);
 
-  const inRange = (d: string | Date) => {
-    const t = new Date(d).getTime();
-    if (dateFrom && t < new Date(dateFrom).getTime()) return false;
-    if (dateTo && t > new Date(dateTo).getTime() + 86_400_000 - 1) return false; // include the whole "to" day
-    return true;
-  };
+  const fromMs = dateFrom ? new Date(dateFrom).getTime() : null;
+  const toMs = dateTo ? new Date(dateTo).getTime() + 86_400_000 - 1 : null;
 
   const displayWorkshifts = useMemo(() => {
-    return allWorkshifts.filter(
-      (ws) =>
-        (!selectedWorker || ws.workerId === selectedWorker) &&
-        (!selectedStore || ws.storeId === selectedStore) &&
-        inRange(ws.date),
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allWorkshifts, selectedWorker, selectedStore, dateFrom, dateTo]);
+    return allWorkshifts.filter((ws) => {
+      if (selectedWorker && ws.workerId !== selectedWorker) return false;
+      if (selectedStore && ws.storeId !== selectedStore) return false;
+      const t = new Date(ws.date).getTime();
+      if (fromMs !== null && t < fromMs) return false;
+      if (toMs !== null && t > toMs) return false;
+      return true;
+    });
+  }, [allWorkshifts, selectedWorker, selectedStore, fromMs, toMs]);
 
   const filteredWages = useMemo(() => {
-    return allWages.filter(
-      (w) =>
-        (!selectedWorker || w.workerId === selectedWorker) &&
-        (!selectedStore || w.workShift?.storeId === selectedStore) &&
-        inRange(w.date),
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allWages, selectedWorker, selectedStore, dateFrom, dateTo]);
+    return allWages.filter((w) => {
+      if (selectedWorker && w.workerId !== selectedWorker) return false;
+      if (selectedStore && w.workShift?.storeId !== selectedStore) return false;
+      const t = new Date(w.date).getTime();
+      if (fromMs !== null && t < fromMs) return false;
+      if (toMs !== null && t > toMs) return false;
+      return true;
+    });
+  }, [allWages, selectedWorker, selectedStore, fromMs, toMs]);
 
   const totalWage = filteredWages.reduce((sum, w) => sum + w.amount, 0);
   const paidTotal = filteredWages
