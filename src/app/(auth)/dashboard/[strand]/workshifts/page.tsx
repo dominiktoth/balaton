@@ -41,6 +41,14 @@ export default function WorkshiftsPage() {
     onSuccess: () => void refetchWages(),
   });
 
+  const { mutate: payAllPending, isPending: isPayingOut } =
+    api.worker.payAllPending.useMutation({
+      onSuccess: () => {
+        void refetchWages();
+        setPayoutScope(null);
+      },
+    });
+
   const { mutate: deleteWorkShift, isPending: isDeleting } =
     api.workshift.deleteWorkShift.useMutation({
       onSuccess: () => {
@@ -53,6 +61,7 @@ export default function WorkshiftsPage() {
     | null
     | { id: string; date: string }
   >(null);
+  const [payoutScope, setPayoutScope] = useState<null | "all" | "range">(null);
 
   const fromMs = dateFrom ? new Date(dateFrom).getTime() : null;
   const toMs = dateTo ? new Date(dateTo).getTime() + 86_400_000 - 1 : null;
@@ -86,6 +95,19 @@ export default function WorkshiftsPage() {
   const pendingTotal = filteredWages
     .filter((w) => !w.paid)
     .reduce((s, w) => s + w.amount, 0);
+  // Strand-wide / all-time numbers for the selected worker (not date-filtered)
+  const workerAllPending = selectedWorker
+    ? allWages.filter((w) => w.workerId === selectedWorker && !w.paid)
+    : [];
+  const workerAllPendingTotal = workerAllPending.reduce((s, w) => s + w.amount, 0);
+  const workerAllPaidTotal = selectedWorker
+    ? allWages
+        .filter((w) => w.workerId === selectedWorker && w.paid)
+        .reduce((s, w) => s + w.amount, 0)
+    : 0;
+  // Range-scoped pending (for the second payout button)
+  const rangePendingWages = filteredWages.filter((w) => !w.paid);
+  const rangePendingTotal = rangePendingWages.reduce((s, w) => s + w.amount, 0);
 
   const getWorkerName = (workerId: string) =>
     workers.find((w) => w.id === workerId)?.name ?? "";
@@ -250,6 +272,108 @@ export default function WorkshiftsPage() {
           )}
         </tbody>
       </table>
+
+      {selectedWorker && (
+        <div className="mb-4 overflow-hidden rounded-2xl border bg-gradient-to-br from-amber-50 via-white to-emerald-50 shadow-sm">
+          <div className="px-5 py-4">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+                  Bérelszámolás
+                </p>
+                <h2 className="text-2xl font-bold tracking-tight">
+                  {workers.find((w) => w.id === selectedWorker)?.name ?? ""}
+                </h2>
+              </div>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-right">
+                <div className="text-xs text-muted-foreground">Függőben (összes)</div>
+                <div className="text-lg font-bold text-amber-700">
+                  {workerAllPendingTotal.toLocaleString()} Ft
+                </div>
+                <div className="text-xs text-muted-foreground">Eddig kifizetve</div>
+                <div className="text-sm text-emerald-700">
+                  {workerAllPaidTotal.toLocaleString()} Ft
+                </div>
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                onClick={() => setPayoutScope("all")}
+                disabled={workerAllPendingTotal === 0 || isPayingOut}
+                className="bg-emerald-600 hover:bg-emerald-700"
+              >
+                Minden függő kifizetése · {workerAllPendingTotal.toLocaleString()} Ft
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setPayoutScope("range")}
+                disabled={rangePendingTotal === 0 || isPayingOut}
+              >
+                Csak szűrt nézet · {rangePendingTotal.toLocaleString()} Ft
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payout confirmation */}
+      <Dialog open={!!payoutScope} onOpenChange={(open) => !open && setPayoutScope(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Bér kifizetése</DialogTitle>
+            <DialogDescription>
+              {payoutScope === "all" && selectedWorker && (
+                <>
+                  Biztos kifizeted{" "}
+                  <b>
+                    {workers.find((w) => w.id === selectedWorker)?.name}
+                  </b>
+                  {" "}összes függő bérét?
+                  <br />
+                  <span className="mt-2 inline-block font-semibold">
+                    {workerAllPending.length} tétel ·{" "}
+                    {workerAllPendingTotal.toLocaleString()} Ft
+                  </span>
+                </>
+              )}
+              {payoutScope === "range" && selectedWorker && (
+                <>
+                  Biztos kifizeted a szűrt nézetbe eső függő béreket?
+                  <br />
+                  <span className="mt-2 inline-block font-semibold">
+                    {rangePendingWages.length} tétel ·{" "}
+                    {rangePendingTotal.toLocaleString()} Ft
+                  </span>
+                  <br />
+                  <span className="text-xs text-muted-foreground">
+                    {dateFrom || "kezdettől"} – {dateTo || "ma"}
+                  </span>
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setPayoutScope(null)}>
+              Mégse
+            </Button>
+            <Button
+              disabled={isPayingOut}
+              className="bg-emerald-600 hover:bg-emerald-700"
+              onClick={() => {
+                if (!selectedWorker) return;
+                payAllPending({
+                  workerId: selectedWorker,
+                  ...(payoutScope === "range"
+                    ? { dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }
+                    : {}),
+                });
+              }}
+            >
+              {isPayingOut ? "Kifizetés..." : "Kifizetés"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="rounded border bg-muted/30 p-4">
         <h2 className="mb-3 text-lg font-semibold">

@@ -9,6 +9,7 @@ export const workshiftRouter = createTRPCRouter({
       storeId: z.string(),
       date: z.string(),
       note: z.string().optional(),
+      amount: z.number().nonnegative().optional(),
     }))
     .mutation(async ({ input }) => {
       return createWorkShift({
@@ -16,6 +17,7 @@ export const workshiftRouter = createTRPCRouter({
         storeId: input.storeId,
         date: new Date(input.date),
         note: input.note,
+        amount: input.amount,
       });
     }),
 

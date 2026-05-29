@@ -76,4 +76,82 @@ export const workerRouter = createTRPCRouter({
         },
       });
     }),
+
+  updateWageAmount: protectedProcedure
+    .input(z.object({ id: z.string(), amount: z.number().nonnegative() }))
+    .mutation(async ({ input }) => {
+      return db.wage.update({
+        where: { id: input.id },
+        data: { amount: input.amount },
+      });
+    }),
+
+  upsertWageForWorkshift: protectedProcedure
+    .input(
+      z.object({
+        workShiftId: z.string(),
+        workerId: z.string(),
+        amount: z.number().nonnegative(),
+        date: z.string(),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      const existing = await db.wage.findUnique({
+        where: { workShiftId: input.workShiftId },
+      });
+      if (existing) {
+        return db.wage.update({
+          where: { id: existing.id },
+          data: { amount: input.amount },
+        });
+      }
+      const wage = await db.wage.create({
+        data: {
+          workerId: input.workerId,
+          workShiftId: input.workShiftId,
+          date: new Date(input.date),
+          amount: input.amount,
+        },
+      });
+      await db.workShift.update({
+        where: { id: input.workShiftId },
+        data: { wageId: wage.id },
+      });
+      return wage;
+    }),
+
+  payAllPending: protectedProcedure
+    .input(
+      z.object({
+        workerId: z.string(),
+        dateFrom: z.string().optional(),
+        dateTo: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      const where = {
+        workerId: input.workerId,
+        paid: false,
+        ...(input.dateFrom || input.dateTo
+          ? {
+              date: {
+                ...(input.dateFrom ? { gte: new Date(input.dateFrom) } : {}),
+                ...(input.dateTo
+                  ? { lte: new Date(new Date(input.dateTo).getTime() + 86_400_000 - 1) }
+                  : {}),
+              },
+            }
+          : {}),
+      };
+      const pending = await db.wage.findMany({
+        where,
+        select: { amount: true },
+      });
+      const totalAmount = pending.reduce((s, w) => s + w.amount, 0);
+      const result = await db.wage.updateMany({
+        where,
+        data: { paid: true, paidAt: new Date() },
+      });
+      return { count: result.count, totalAmount };
+    }),
 });

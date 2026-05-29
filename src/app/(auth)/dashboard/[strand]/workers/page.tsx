@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { api } from "~/trpc/react";
 import { Button } from "~/components/ui/button";
@@ -95,6 +95,22 @@ export default function WorkersPage() {
       void utils.worker.getAllWages.invalidate();
     },
   });
+
+  const { mutate: upsertWageForWorkshift } = api.worker.upsertWageForWorkshift.useMutation({
+    onSettled: () => {
+      void utils.workshift.getWorkShiftsByStoreAndDate.invalidate(workshiftQueryInput);
+      void utils.worker.getAllWages.invalidate();
+    },
+  });
+
+  // Per-worker draft inputs for the daily amount. When undefined, falls back to
+  // the existing wage / worker.dailyWage / empty.
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  useEffect(() => {
+    // Reset drafts when the date or store filter changes, so the inputs reflect
+    // the fresh server data for that day.
+    setDrafts({});
+  }, [selectedDate, selectedStore]);
 
   const { mutate: deleteWorkShift } = api.workshift.deleteWorkShift.useMutation({
     onMutate: async (vars) => {
@@ -285,44 +301,111 @@ export default function WorkersPage() {
             </select>
           </div>
         </div>
-        <div className="max-h-64 overflow-y-auto border rounded bg-white">
+        <div className="max-h-96 overflow-y-auto border rounded bg-white">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Név</TableHead>
-                <TableHead>Dolgozott?</TableHead>
+                <TableHead>Napi bér (Ft)</TableHead>
+                <TableHead>Művelet</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {workers.map((worker) => {
                 const workerStores = worker.stores ?? [];
                 if (selectedStore && !workerStores.some((s: { id: string; name: string }) => s.id === selectedStore)) return null;
-                // type Workshift = { id: string; workerId: string; storeId: string; date: string };
                 const workshift = workshiftsForDate.find((ws) => ws.workerId === worker.id);
+                const wageOnShift = workshift?.wage;
                 const firstStoreId = workerStores.length > 0 && workerStores[0] ? workerStores[0].id : "";
+                const draft = drafts[worker.id];
+                const inputValue =
+                  draft !== undefined
+                    ? draft
+                    : wageOnShift?.amount != null
+                      ? String(wageOnShift.amount)
+                      : worker.dailyWage != null
+                        ? String(worker.dailyWage)
+                        : "";
+                const persisted = wageOnShift?.amount;
+                const parsed = inputValue.trim() === "" ? null : Number(inputValue);
+                const hasValidNumber = parsed !== null && !Number.isNaN(parsed) && parsed >= 0;
+                const isDirty = persisted == null
+                  ? hasValidNumber
+                  : hasValidNumber && parsed !== persisted;
+
+                const handleSave = () => {
+                  if (!hasValidNumber || parsed === null) return;
+                  if (workshift) {
+                    upsertWageForWorkshift({
+                      workShiftId: workshift.id,
+                      workerId: worker.id,
+                      amount: parsed,
+                      date: selectedDate ?? "",
+                    });
+                  } else {
+                    createWorkShift({
+                      workerId: worker.id,
+                      storeId: selectedStore || firstStoreId || "",
+                      date: selectedDate ?? "",
+                      amount: parsed,
+                    });
+                  }
+                  setDrafts((d) => {
+                    const { [worker.id]: _, ...rest } = d;
+                    return rest;
+                  });
+                };
+
                 return (
-                  <TableRow key={worker.id}>
-                    <TableCell>{worker.name}</TableCell>
+                  <TableRow key={worker.id} className={workshift ? "bg-emerald-50/40" : ""}>
+                    <TableCell className="font-medium">
+                      {worker.name}
+                      {workshift && (
+                        <span className="ml-2 text-[10px] uppercase tracking-wider text-emerald-700">
+                          rögzítve
+                        </span>
+                      )}
+                    </TableCell>
                     <TableCell>
-                      <input
-                        type="checkbox"
-                        checked={!!workshift}
-                        onChange={e => {
-                          if (e.target.checked) {
-                            createWorkShift({ workerId: worker.id, storeId: selectedStore || firstStoreId || "", date: selectedDate ?? "" });
-                          } else if (workshift) {
-                            deleteWorkShift({ id: workshift.id });
-                          }
-                        }}
+                      <Input
+                        type="number"
+                        min="0"
+                        inputMode="numeric"
+                        value={inputValue}
+                        placeholder={worker.dailyWage ? String(worker.dailyWage) : "0"}
+                        onChange={(e) =>
+                          setDrafts((d) => ({ ...d, [worker.id]: e.target.value }))
+                        }
                         disabled={isLoadingWorkshifts}
+                        className="w-32"
                       />
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={handleSave}
+                          disabled={!hasValidNumber || !isDirty}
+                        >
+                          {workshift ? "Frissítés" : "Mentés"}
+                        </Button>
+                        {workshift && (
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => deleteWorkShift({ id: workshift.id })}
+                          >
+                            Törlés
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
               })}
               {workers.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={2} className="text-muted-foreground text-center">Nincsenek Dolgozók.</TableCell>
+                  <TableCell colSpan={3} className="text-muted-foreground text-center">Nincsenek Dolgozók.</TableCell>
                 </TableRow>
               )}
             </TableBody>
