@@ -8,7 +8,6 @@ import {
   IconBeach,
   IconUser,
   IconUsers,
-  IconClock,
   IconCurrencyForint,
   IconPigMoney,
   IconChevronDown,
@@ -44,7 +43,6 @@ function buildNav(strandSlug: string) {
     { title: "Üzletek", url: `${base}/stores`, icon: IconShoppingCart },
     { title: "Felhasználók", url: `${base}/users`, icon: IconUser },
     { title: "Dolgozók", url: `${base}/workers`, icon: IconUsers },
-    { title: "Ledolgozott órák", url: `${base}/workshifts`, icon: IconClock },
     { title: "Pénzügyek", url: `${base}/finances`, icon: IconCurrencyForint },
     { title: "Befektetések", url: `${base}/investments`, icon: IconPigMoney },
   ]

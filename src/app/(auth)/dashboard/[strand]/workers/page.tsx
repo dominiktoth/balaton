@@ -5,65 +5,66 @@ import { api } from "~/trpc/react";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
-import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "~/components/ui/table";
 import {
   Dialog,
-  DialogTrigger,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "~/components/ui/dialog";
 import { MultiSelectCombobox } from "~/components/ui/multiselect-combobox";
+import {
+  IconChevronDown,
+  IconChevronUp,
+  IconCheck,
+  IconX,
+  IconPlus,
+} from "@tabler/icons-react";
+
+function todayStr() {
+  return new Date().toISOString().split("T")[0] ?? "";
+}
+function defaultSeasonStart() {
+  return `${new Date().getFullYear()}-05-01`;
+}
 
 export default function WorkersPage() {
   const params = useParams<{ strand: string }>();
   const strandSlug = params.strand;
 
-  const { data: workers = [], refetch } = api.worker.getWorkers.useQuery({ strandSlug });
-  const { data: stores = [] } = api.store.getAllStores.useQuery({ strandSlug });
-  const { mutate: createWorker, isPending: isCreating } = api.worker.createWorker.useMutation({
-    onSuccess: () => {
-      setName("");
-      setStoreIds([]);
-      void refetch();
-    },
-  });
-
-  const { mutate: deleteWorker, isPending: isDeleting } = api.worker.deleteWorker.useMutation({
-    onSuccess: () => void refetch(),
-  });
-
-  const { mutate: updateWorker, isPending: isUpdating } = api.worker.updateWorker.useMutation({
-    onSuccess: () => {
-      setEditWorker(null);
-      void refetch();
-    },
-  });
-
-  const [name, setName] = useState("");
-  const [storeIds, setStoreIds] = useState<string[]>([]);
-  const [dailyWage, setDailyWage] = useState<string>("");
-  const [editWorker, setEditWorker] = useState<null | { id: string; name: string; storeIds: string[]; dailyWage?: number | null }>(null);
-
-  const storeOptions = stores.map((store) => ({ label: store.name, value: store.id }));
-
-  const handleAddWorker = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name || storeIds.length === 0) return;
-    createWorker({ name, storeIds, dailyWage: dailyWage ? parseFloat(dailyWage) : undefined });
-  };
-
-  // Munkanapok rögzítése szekcióhoz
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split("T")[0]);
-  const [selectedStore, setSelectedStore] = useState<string>(""); // Explicitly type as string
-  const workshiftQueryInput = { storeId: selectedStore, date: selectedDate ?? "" };
-  const { data: workshiftsForDate = [], isLoading: isLoadingWorkshifts } = api.workshift.getWorkShiftsByStoreAndDate.useQuery(
-    workshiftQueryInput,
-    { enabled: !!selectedDate }
-  );
   const utils = api.useUtils();
+  const { data: workers = [], refetch: refetchWorkers } =
+    api.worker.getWorkers.useQuery({ strandSlug });
+  const { data: stores = [] } = api.store.getAllStores.useQuery({ strandSlug });
+  const { data: allWages = [] } = api.worker.getAllWages.useQuery({ strandSlug });
 
+  // Top filters
+  const [selectedDate, setSelectedDate] = useState<string>(() => todayStr());
+  const [selectedStore, setSelectedStore] = useState<string>("");
+
+  const workshiftQueryInput = { storeId: selectedStore, date: selectedDate };
+  const { data: workshiftsForDate = [] } =
+    api.workshift.getWorkShiftsByStoreAndDate.useQuery(workshiftQueryInput, {
+      enabled: !!selectedDate,
+    });
+
+  // Per-worker UI state
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [detailRange, setDetailRange] = useState<
+    Record<string, { from: string; to: string }>
+  >({});
+  const [payoutWorker, setPayoutWorker] = useState<
+    | null
+    | { workerId: string; total: number; count: number }
+  >(null);
+
+  useEffect(() => {
+    setDrafts({});
+  }, [selectedDate, selectedStore]);
+
+  // Mutations — workshift create/delete with optimistic cache update on today
   const { mutate: createWorkShift } = api.workshift.createWorkShift.useMutation({
     onMutate: async (vars) => {
       await utils.workshift.getWorkShiftsByStoreAndDate.cancel(workshiftQueryInput);
@@ -78,10 +79,26 @@ export default function WorkersPage() {
         createdAt: new Date(),
         updatedAt: new Date(),
         worker: workers.find((w) => w.id === vars.workerId) ?? null,
+        wage: vars.amount
+          ? {
+              id: "optimistic-wage",
+              workerId: vars.workerId,
+              workShiftId: "",
+              amount: vars.amount,
+              date: new Date(vars.date),
+              paid: false,
+              paidAt: null,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            }
+          : null,
       };
       utils.workshift.getWorkShiftsByStoreAndDate.setData(
         workshiftQueryInput,
-        (old) => [...(old ?? []), optimistic as unknown as NonNullable<typeof old>[number]],
+        (old) => [
+          ...(old ?? []),
+          optimistic as unknown as NonNullable<typeof old>[number],
+        ],
       );
       return { prev };
     },
@@ -95,22 +112,6 @@ export default function WorkersPage() {
       void utils.worker.getAllWages.invalidate();
     },
   });
-
-  const { mutate: upsertWageForWorkshift } = api.worker.upsertWageForWorkshift.useMutation({
-    onSettled: () => {
-      void utils.workshift.getWorkShiftsByStoreAndDate.invalidate(workshiftQueryInput);
-      void utils.worker.getAllWages.invalidate();
-    },
-  });
-
-  // Per-worker draft inputs for the daily amount. When undefined, falls back to
-  // the existing wage / worker.dailyWage / empty.
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
-  useEffect(() => {
-    // Reset drafts when the date or store filter changes, so the inputs reflect
-    // the fresh server data for that day.
-    setDrafts({});
-  }, [selectedDate, selectedStore]);
 
   const { mutate: deleteWorkShift } = api.workshift.deleteWorkShift.useMutation({
     onMutate: async (vars) => {
@@ -133,285 +134,657 @@ export default function WorkersPage() {
     },
   });
 
+  const { mutate: upsertWageForWorkshift } =
+    api.worker.upsertWageForWorkshift.useMutation({
+      onSettled: () => {
+        void utils.workshift.getWorkShiftsByStoreAndDate.invalidate(workshiftQueryInput);
+        void utils.worker.getAllWages.invalidate();
+      },
+    });
+
+  const { mutate: setWagePaid } = api.worker.setWagePaid.useMutation({
+    onSettled: () => {
+      void utils.worker.getAllWages.invalidate();
+    },
+  });
+
+  const { mutate: payAllPending, isPending: isPayingOut } =
+    api.worker.payAllPending.useMutation({
+      onSuccess: () => {
+        void utils.worker.getAllWages.invalidate();
+        setPayoutWorker(null);
+      },
+    });
+
+  // Worker CRUD dialogs
+  const [addOpen, setAddOpen] = useState(false);
+  const [addName, setAddName] = useState("");
+  const [addStoreIds, setAddStoreIds] = useState<string[]>([]);
+  const [addDailyWage, setAddDailyWage] = useState("");
+  const { mutate: createWorker, isPending: isCreatingWorker } =
+    api.worker.createWorker.useMutation({
+      onSuccess: () => {
+        setAddOpen(false);
+        setAddName("");
+        setAddStoreIds([]);
+        setAddDailyWage("");
+        void refetchWorkers();
+      },
+    });
+
+  const [editWorker, setEditWorker] = useState<
+    | null
+    | { id: string; name: string; storeIds: string[]; dailyWage?: number | null }
+  >(null);
+  const { mutate: updateWorker, isPending: isUpdatingWorker } =
+    api.worker.updateWorker.useMutation({
+      onSuccess: () => {
+        setEditWorker(null);
+        void refetchWorkers();
+      },
+    });
+  const [workerToDelete, setWorkerToDelete] = useState<
+    | null
+    | { id: string; name: string }
+  >(null);
+  const { mutate: deleteWorker } = api.worker.deleteWorker.useMutation({
+    onSuccess: () => {
+      setWorkerToDelete(null);
+      void refetchWorkers();
+    },
+  });
+
+  const storeOptions = stores.map((s) => ({ label: s.name, value: s.id }));
+
+  const visibleWorkers = workers.filter(
+    (w) => !selectedStore || w.stores?.some((s) => s.id === selectedStore),
+  );
+
   return (
-    <div className="max-w-xl mx-auto py-10 px-4 md:px-0">
-      <h1 className="text-3xl font-bold mb-6">Dolgozók kezelése</h1>
-      <form onSubmit={handleAddWorker} className="flex gap-2 mb-8 items-center">
-        <div className="flex-1">
-          <Label htmlFor="worker-name " className="mb-2">Név</Label>
-          <Input
-            id="worker-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Új dolgozó neve"
-            required
-          />
+    <div className="mx-auto max-w-4xl px-4 py-10 md:px-0">
+      {/* Header */}
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold">Dolgozók</h1>
+          <p className="text-sm text-muted-foreground">
+            Napi bér rögzítése és kifizetés egy helyen.
+          </p>
         </div>
-        <div className="flex-1">
-          <MultiSelectCombobox
-            options={storeOptions}
-            value={storeIds}
-            onChange={setStoreIds}
-            label="Üzletek"
-            placeholder="Válassz üzlet(ek)et"
-          />
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <Label htmlFor="header-date">Nap</Label>
+            <Input
+              id="header-date"
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="w-44"
+            />
+          </div>
+          <div>
+            <Label htmlFor="header-store">Üzlet</Label>
+            <select
+              id="header-store"
+              value={selectedStore}
+              onChange={(e) => setSelectedStore(e.target.value)}
+              className="w-44 rounded border bg-background px-3 py-2"
+            >
+              <option value="">Összes</option>
+              {stores.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <Button onClick={() => setAddOpen(true)}>
+            <IconPlus className="mr-1 size-4" /> Új dolgozó
+          </Button>
         </div>
-        <div className="flex-1">
-          <Label htmlFor="worker-dailywage" className="mb-2">Napi bér (Ft)</Label>
-          <Input
-            id="worker-dailywage"
-            type="number"
-            min="0"
-            value={dailyWage}
-            onChange={e => setDailyWage(e.target.value)}
-            placeholder="Pl. 20000"
-          />
-        </div>
-        <Button type="submit" disabled={isCreating} className="self-end">
-          {isCreating ? "Hozzáadás..." : "Hozzáadás"}
-        </Button>
-      </form>
-      <div className="max-h-96 overflow-y-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Név</TableHead>
-              <TableHead>Üzletek</TableHead>
-              <TableHead>Napi bér</TableHead>
-              <TableHead></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {workers.map((worker) => {
-              type Store = { id: string; name: string };
-              return (
-                <TableRow key={worker.id}>
-                  <TableCell>{worker.name}</TableCell>
-                  <TableCell>{worker.stores?.map((s: Store) => s.name).join(", ") || "-"}</TableCell>
-                  <TableCell>{worker.dailyWage ? `Ft ${worker.dailyWage.toLocaleString()}` : "-"}</TableCell>
-                  <TableCell className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setEditWorker({ id: worker.id, name: worker.name, storeIds: worker.stores?.map((s: Store) => s.id) || [], dailyWage: worker.dailyWage })}
-                    >
-                      Szerkesztés
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      disabled={isDeleting}
-                      onClick={() => deleteWorker({ id: worker.id })}
-                    >
-                      {isDeleting ? "Törlés..." : "Törlés"}
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-            {workers.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={3} className="text-muted-foreground text-center">Nincsenek Dolgozók.</TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
       </div>
-      {/* Szerkesztő dialog */}
-      <Dialog open={!!editWorker} onOpenChange={(open) => !open && setEditWorker(null)}>
+
+      {/* Worker cards */}
+      <div className="space-y-4">
+        {visibleWorkers.map((worker) => {
+          const workerStores = worker.stores ?? [];
+          const todaysWorkshift = workshiftsForDate.find(
+            (ws) => ws.workerId === worker.id,
+          );
+          const wageOnShift = todaysWorkshift?.wage;
+          const firstStoreId = workerStores[0]?.id ?? "";
+
+          const draft = drafts[worker.id];
+          const inputValue =
+            draft !== undefined
+              ? draft
+              : wageOnShift?.amount != null
+                ? String(wageOnShift.amount)
+                : worker.dailyWage != null
+                  ? String(worker.dailyWage)
+                  : "";
+          const persisted = wageOnShift?.amount;
+          const parsed = inputValue.trim() === "" ? null : Number(inputValue);
+          const hasValid = parsed !== null && !Number.isNaN(parsed) && parsed >= 0;
+          const isDirty =
+            persisted == null
+              ? hasValid
+              : hasValid && parsed !== persisted;
+
+          // Per-worker totals (across all dates)
+          const myWages = allWages.filter((w) => w.workerId === worker.id);
+          const pendingWages = myWages.filter((w) => !w.paid);
+          const pendingTotal = pendingWages.reduce((s, w) => s + w.amount, 0);
+          const paidTotal = myWages
+            .filter((w) => w.paid)
+            .reduce((s, w) => s + w.amount, 0);
+
+          const isExpanded = !!expanded[worker.id];
+          const range =
+            detailRange[worker.id] ?? { from: defaultSeasonStart(), to: "" };
+          const fromMs = range.from ? new Date(range.from).getTime() : null;
+          const toMs = range.to
+            ? new Date(range.to).getTime() + 86_400_000 - 1
+            : null;
+          const detailsWages = myWages
+            .filter((w) => {
+              const t = new Date(w.date).getTime();
+              if (fromMs !== null && t < fromMs) return false;
+              if (toMs !== null && t > toMs) return false;
+              return true;
+            })
+            .sort(
+              (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+            );
+
+          const handleSave = () => {
+            if (!hasValid || parsed === null) return;
+            if (todaysWorkshift) {
+              upsertWageForWorkshift({
+                workShiftId: todaysWorkshift.id,
+                workerId: worker.id,
+                amount: parsed,
+                date: selectedDate,
+              });
+            } else {
+              createWorkShift({
+                workerId: worker.id,
+                storeId: selectedStore || firstStoreId,
+                date: selectedDate,
+                amount: parsed,
+              });
+            }
+            setDrafts((d) => {
+              const next = { ...d };
+              delete next[worker.id];
+              return next;
+            });
+          };
+
+          return (
+            <div
+              key={worker.id}
+              className="overflow-hidden rounded-xl border bg-card shadow-sm"
+            >
+              {/* Header */}
+              <div className="flex flex-wrap items-start justify-between gap-3 border-b p-5">
+                <div>
+                  <h2 className="text-xl font-bold">{worker.name}</h2>
+                  <p className="text-xs text-muted-foreground">
+                    {workerStores.map((s) => s.name).join(", ") || "—"}
+                    {worker.dailyWage
+                      ? ` · napi alap: ${worker.dailyWage.toLocaleString()} Ft`
+                      : ""}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      setEditWorker({
+                        id: worker.id,
+                        name: worker.name,
+                        storeIds: workerStores.map((s) => s.id),
+                        dailyWage: worker.dailyWage,
+                      })
+                    }
+                  >
+                    Szerkeszt
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() =>
+                      setWorkerToDelete({ id: worker.id, name: worker.name })
+                    }
+                  >
+                    Törlés
+                  </Button>
+                </div>
+              </div>
+
+              {/* Today's row */}
+              <div className="px-5 py-4">
+                <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/30 p-3">
+                  <span className="text-sm font-medium">Ma ({selectedDate}):</span>
+                  <Input
+                    type="number"
+                    min="0"
+                    inputMode="numeric"
+                    value={inputValue}
+                    placeholder={
+                      worker.dailyWage ? String(worker.dailyWage) : "0"
+                    }
+                    onChange={(e) =>
+                      setDrafts((d) => ({ ...d, [worker.id]: e.target.value }))
+                    }
+                    className="w-32"
+                  />
+                  <span className="text-sm text-muted-foreground">Ft</span>
+                  <Button
+                    size="sm"
+                    onClick={handleSave}
+                    disabled={!hasValid || !isDirty}
+                  >
+                    {todaysWorkshift ? "Frissítés" : "Mentés"}
+                  </Button>
+                  {todaysWorkshift && (
+                    <>
+                      <span className="ml-auto text-xs font-medium text-emerald-700">
+                        ✓ rögzítve
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => deleteWorkShift({ id: todaysWorkshift.id })}
+                      >
+                        Törlés
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Status + payout */}
+              <div className="flex flex-wrap items-center gap-4 border-t bg-gradient-to-br from-amber-50/40 via-transparent to-emerald-50/40 px-5 py-4">
+                <div className="grid flex-1 grid-cols-[auto_auto] gap-x-6 gap-y-1">
+                  <div className="text-xs text-muted-foreground">Függőben</div>
+                  <div className="text-lg font-bold text-amber-700">
+                    {pendingTotal.toLocaleString()} Ft
+                    <span className="ml-2 text-xs font-normal text-muted-foreground">
+                      ({pendingWages.length} nap)
+                    </span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Eddig kifizetve
+                  </div>
+                  <div className="text-sm text-emerald-700">
+                    {paidTotal.toLocaleString()} Ft
+                  </div>
+                </div>
+                <div className="ml-auto flex items-center gap-2">
+                  {pendingTotal > 0 && (
+                    <Button
+                      className="bg-emerald-600 hover:bg-emerald-700"
+                      onClick={() =>
+                        setPayoutWorker({
+                          workerId: worker.id,
+                          total: pendingTotal,
+                          count: pendingWages.length,
+                        })
+                      }
+                    >
+                      Kifizetés · {pendingTotal.toLocaleString()} Ft
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      setExpanded((e) => ({
+                        ...e,
+                        [worker.id]: !e[worker.id],
+                      }))
+                    }
+                  >
+                    Részletek
+                    {isExpanded ? (
+                      <IconChevronUp className="ml-1 size-4" />
+                    ) : (
+                      <IconChevronDown className="ml-1 size-4" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Expanded details */}
+              {isExpanded && (
+                <div className="border-t bg-muted/20 px-5 py-4">
+                  <div className="mb-3 flex flex-wrap items-end gap-3">
+                    <div>
+                      <Label htmlFor={`from-${worker.id}`}>Tól</Label>
+                      <Input
+                        id={`from-${worker.id}`}
+                        type="date"
+                        value={range.from}
+                        onChange={(e) =>
+                          setDetailRange((r) => ({
+                            ...r,
+                            [worker.id]: { ...range, from: e.target.value },
+                          }))
+                        }
+                        className="w-40"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor={`to-${worker.id}`}>Ig</Label>
+                      <Input
+                        id={`to-${worker.id}`}
+                        type="date"
+                        value={range.to}
+                        onChange={(e) =>
+                          setDetailRange((r) => ({
+                            ...r,
+                            [worker.id]: { ...range, to: e.target.value },
+                          }))
+                        }
+                        className="w-40"
+                      />
+                    </div>
+                  </div>
+                  <table className="w-full rounded border bg-background">
+                    <thead>
+                      <tr className="bg-muted">
+                        <th className="p-2 text-left">Dátum</th>
+                        <th className="p-2 text-left">Üzlet</th>
+                        <th className="p-2 text-left">Összeg</th>
+                        <th className="p-2 text-left">Megjegyzés</th>
+                        <th className="p-2 text-left">Státusz</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {detailsWages.map((w) => {
+                        const storeId = w.workShift?.storeId;
+                        const storeName = storeId
+                          ? (stores.find((s) => s.id === storeId)?.name ?? "-")
+                          : "-";
+                        return (
+                          <tr
+                            key={w.id}
+                            className={`border-t ${w.paid ? "bg-emerald-50/60" : ""}`}
+                          >
+                            <td className="p-2">
+                              {new Date(w.date).toLocaleDateString()}
+                            </td>
+                            <td className="p-2">{storeName}</td>
+                            <td className="p-2">
+                              {w.amount.toLocaleString()} Ft
+                            </td>
+                            <td className="p-2">{w.workShift?.note ?? "-"}</td>
+                            <td className="p-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setWagePaid({ id: w.id, paid: !w.paid })
+                                }
+                                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition ${
+                                  w.paid
+                                    ? "border-emerald-300 bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                                    : "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                                }`}
+                                title={
+                                  w.paidAt
+                                    ? `Kifizetve: ${new Date(w.paidAt).toLocaleString()}`
+                                    : "Nincs kifizetve"
+                                }
+                              >
+                                {w.paid ? (
+                                  <IconCheck className="size-3.5" />
+                                ) : (
+                                  <IconX className="size-3.5" />
+                                )}
+                                {w.paid ? "Kifizetve" : "Függőben"}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {detailsWages.length === 0 && (
+                        <tr>
+                          <td
+                            colSpan={5}
+                            className="p-3 text-center text-muted-foreground"
+                          >
+                            Nincs adat ebben az időszakban.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {visibleWorkers.length === 0 && (
+          <p className="py-12 text-center text-muted-foreground">
+            Nincs dolgozó ezzel a szűrővel.
+          </p>
+        )}
+      </div>
+
+      {/* Add Worker Dialog */}
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Új dolgozó</DialogTitle>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!addName || addStoreIds.length === 0) return;
+              createWorker({
+                name: addName,
+                storeIds: addStoreIds,
+                dailyWage: addDailyWage ? parseFloat(addDailyWage) : undefined,
+              });
+            }}
+            className="mt-2 space-y-4"
+          >
+            <div>
+              <Label>Név</Label>
+              <Input
+                value={addName}
+                onChange={(e) => setAddName(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <MultiSelectCombobox
+                options={storeOptions}
+                value={addStoreIds}
+                onChange={setAddStoreIds}
+                label="Üzletek"
+                placeholder="Válassz üzlet(ek)et"
+              />
+            </div>
+            <div>
+              <Label>Napi alapbér (Ft) (opcionális)</Label>
+              <Input
+                type="number"
+                min="0"
+                value={addDailyWage}
+                onChange={(e) => setAddDailyWage(e.target.value)}
+                placeholder="Pl. 20000"
+              />
+            </div>
+            <DialogFooter>
+              <Button type="submit" disabled={isCreatingWorker}>
+                {isCreatingWorker ? "..." : "Hozzáadás"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Worker Dialog */}
+      <Dialog
+        open={!!editWorker}
+        onOpenChange={(open) => !open && setEditWorker(null)}
+      >
         <DialogContent>
           <form
-            onSubmit={e => {
+            onSubmit={(e) => {
               e.preventDefault();
               if (!editWorker) return;
-              updateWorker({ ...editWorker, dailyWage: editWorker.dailyWage !== undefined && editWorker.dailyWage !== null ? Number(editWorker.dailyWage) : undefined });
+              updateWorker({
+                ...editWorker,
+                dailyWage:
+                  editWorker.dailyWage != null
+                    ? Number(editWorker.dailyWage)
+                    : undefined,
+              });
             }}
           >
             <DialogHeader>
               <DialogTitle>Dolgozó szerkesztése</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4 mt-4">
+            <div className="mt-2 space-y-4">
               <div>
-                <Label htmlFor="edit-worker-name">Név</Label>
+                <Label>Név</Label>
                 <Input
-                  id="edit-worker-name"
-                  value={editWorker?.name || ""}
-                  onChange={e => setEditWorker(w => w ? { ...w, name: e.target.value } : w)}
+                  value={editWorker?.name ?? ""}
+                  onChange={(e) =>
+                    setEditWorker((w) =>
+                      w ? { ...w, name: e.target.value } : w,
+                    )
+                  }
                   required
                 />
               </div>
               <div>
                 <MultiSelectCombobox
                   options={storeOptions}
-                  value={editWorker?.storeIds || []}
-                  onChange={vals => setEditWorker(w => w ? { ...w, storeIds: vals } : w)}
+                  value={editWorker?.storeIds ?? []}
+                  onChange={(vals) =>
+                    setEditWorker((w) => (w ? { ...w, storeIds: vals } : w))
+                  }
                   label="Üzletek"
                   placeholder="Válassz üzlet(ek)et"
                 />
               </div>
               <div>
-                <Label htmlFor="edit-worker-dailywage">Napi bér (Ft)</Label>
+                <Label>Napi alapbér (Ft)</Label>
                 <Input
-                  id="edit-worker-dailywage"
                   type="number"
                   min="0"
                   value={editWorker?.dailyWage ?? ""}
-                  onChange={e => setEditWorker(w => w ? { ...w, dailyWage: e.target.value === "" ? undefined : Number(e.target.value) } : w)}
+                  onChange={(e) =>
+                    setEditWorker((w) =>
+                      w
+                        ? {
+                            ...w,
+                            dailyWage:
+                              e.target.value === ""
+                                ? undefined
+                                : Number(e.target.value),
+                          }
+                        : w,
+                    )
+                  }
                   placeholder="Pl. 20000"
                 />
               </div>
             </div>
             <DialogFooter className="mt-4">
-              <Button type="submit" disabled={isUpdating}>
-                {isUpdating ? "Mentés..." : "Mentés"}
+              <Button type="submit" disabled={isUpdatingWorker}>
+                {isUpdatingWorker ? "..." : "Mentés"}
               </Button>
-              <Button type="button" variant="secondary" onClick={() => setEditWorker(null)}>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setEditWorker(null)}
+              >
                 Mégse
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
-      {/* Munkanapok rögzítése szekció */}
-      <div className="mb-10 p-4 border rounded bg-muted/30">
-        <h2 className="text-xl font-semibold mb-4">Munkanapok rögzítése</h2>
-        <div className="flex gap-4 mb-4 items-end">
-          <div>
-            <Label htmlFor="workshift-date">Dátum</Label>
-            <Input
-              id="workshift-date"
-              type="date"
-              value={selectedDate}
-              onChange={e => setSelectedDate(e.target.value)}
-              className="w-full border rounded px-3 py-2"
-            />
-          </div>
-          <div>
-            <Label htmlFor="workshift-store">Üzlet</Label>
-            <select
-              id="workshift-store"
-              value={selectedStore}
-              onChange={e => setSelectedStore(e.target.value)}
-              className="w-full border rounded px-3 py-2"
+
+      {/* Delete worker confirm */}
+      <Dialog
+        open={!!workerToDelete}
+        onOpenChange={(open) => !open && setWorkerToDelete(null)}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Dolgozó törlése</DialogTitle>
+            <DialogDescription>
+              Biztos törlöd <b>{workerToDelete?.name}</b>-t? Ez törli a
+              hozzá tartozó műszakokat is.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="secondary"
+              onClick={() => setWorkerToDelete(null)}
             >
-              <option value="">Összes</option>
-              {stores.map((store) => (
-                <option key={store.id} value={store.id}>{store.name}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <div className="max-h-96 overflow-y-auto border rounded bg-white">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Név</TableHead>
-                <TableHead>Napi bér (Ft)</TableHead>
-                <TableHead>Művelet</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {workers.map((worker) => {
-                const workerStores = worker.stores ?? [];
-                if (selectedStore && !workerStores.some((s: { id: string; name: string }) => s.id === selectedStore)) return null;
-                const workshift = workshiftsForDate.find((ws) => ws.workerId === worker.id);
-                const wageOnShift = workshift?.wage;
-                const firstStoreId = workerStores.length > 0 && workerStores[0] ? workerStores[0].id : "";
-                const draft = drafts[worker.id];
-                const inputValue =
-                  draft !== undefined
-                    ? draft
-                    : wageOnShift?.amount != null
-                      ? String(wageOnShift.amount)
-                      : worker.dailyWage != null
-                        ? String(worker.dailyWage)
-                        : "";
-                const persisted = wageOnShift?.amount;
-                const parsed = inputValue.trim() === "" ? null : Number(inputValue);
-                const hasValidNumber = parsed !== null && !Number.isNaN(parsed) && parsed >= 0;
-                const isDirty = persisted == null
-                  ? hasValidNumber
-                  : hasValidNumber && parsed !== persisted;
+              Mégse
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() =>
+                workerToDelete && deleteWorker({ id: workerToDelete.id })
+              }
+            >
+              Törlés
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-                const handleSave = () => {
-                  if (!hasValidNumber || parsed === null) return;
-                  if (workshift) {
-                    upsertWageForWorkshift({
-                      workShiftId: workshift.id,
-                      workerId: worker.id,
-                      amount: parsed,
-                      date: selectedDate ?? "",
-                    });
-                  } else {
-                    createWorkShift({
-                      workerId: worker.id,
-                      storeId: selectedStore || firstStoreId || "",
-                      date: selectedDate ?? "",
-                      amount: parsed,
-                    });
-                  }
-                  setDrafts((d) => {
-                    const { [worker.id]: _, ...rest } = d;
-                    return rest;
-                  });
-                };
-
-                return (
-                  <TableRow key={worker.id} className={workshift ? "bg-emerald-50/40" : ""}>
-                    <TableCell className="font-medium">
-                      {worker.name}
-                      {workshift && (
-                        <span className="ml-2 text-[10px] uppercase tracking-wider text-emerald-700">
-                          rögzítve
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        type="number"
-                        min="0"
-                        inputMode="numeric"
-                        value={inputValue}
-                        placeholder={worker.dailyWage ? String(worker.dailyWage) : "0"}
-                        onChange={(e) =>
-                          setDrafts((d) => ({ ...d, [worker.id]: e.target.value }))
-                        }
-                        disabled={isLoadingWorkshifts}
-                        className="w-32"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          onClick={handleSave}
-                          disabled={!hasValidNumber || !isDirty}
-                        >
-                          {workshift ? "Frissítés" : "Mentés"}
-                        </Button>
-                        {workshift && (
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => deleteWorkShift({ id: workshift.id })}
-                          >
-                            Törlés
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-              {workers.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={3} className="text-muted-foreground text-center">Nincsenek Dolgozók.</TableCell>
-                </TableRow>
+      {/* Payout Confirmation Dialog */}
+      <Dialog
+        open={!!payoutWorker}
+        onOpenChange={(open) => !open && setPayoutWorker(null)}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Bér kifizetése</DialogTitle>
+            <DialogDescription>
+              {payoutWorker && (
+                <>
+                  Biztos kifizeted{" "}
+                  <b>
+                    {workers.find((w) => w.id === payoutWorker.workerId)?.name}
+                  </b>{" "}
+                  összes függő bérét?
+                  <br />
+                  <span className="mt-2 inline-block font-semibold">
+                    {payoutWorker.count} tétel ·{" "}
+                    {payoutWorker.total.toLocaleString()} Ft
+                  </span>
+                </>
               )}
-            </TableBody>
-          </Table>
-        </div>
-      </div>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setPayoutWorker(null)}>
+              Mégse
+            </Button>
+            <Button
+              disabled={isPayingOut}
+              className="bg-emerald-600 hover:bg-emerald-700"
+              onClick={() => {
+                if (!payoutWorker) return;
+                payAllPending({ workerId: payoutWorker.workerId });
+              }}
+            >
+              {isPayingOut ? "..." : "Kifizetés"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
-} 
+}
