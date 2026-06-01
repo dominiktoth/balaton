@@ -31,8 +31,14 @@ export async function getWorkerById(workerId: string) {
 }
 
 export async function deleteWorker(workerId: string) {
-  return db.worker.delete({
-    where: { id: workerId },
+  return db.$transaction(async (tx) => {
+    // Wage.workShift has onDelete: Cascade, so deleting the workshifts
+    // cleans up most wages. But Wage.workerId is required and has no
+    // cascade from Worker, so any wage without a workshift would block
+    // the worker delete. Wipe everything tied to the worker explicitly.
+    await tx.wage.deleteMany({ where: { workerId } });
+    await tx.workShift.deleteMany({ where: { workerId } });
+    return tx.worker.delete({ where: { id: workerId } });
   });
 }
 

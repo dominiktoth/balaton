@@ -187,12 +187,20 @@ export default function WorkersPage() {
     | null
     | { id: string; name: string }
   >(null);
-  const { mutate: deleteWorker } = api.worker.deleteWorker.useMutation({
-    onSuccess: () => {
-      setWorkerToDelete(null);
-      void refetchWorkers();
-    },
-  });
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const { mutate: deleteWorker, isPending: isDeletingWorker } =
+    api.worker.deleteWorker.useMutation({
+      onSuccess: () => {
+        setWorkerToDelete(null);
+        setDeleteError(null);
+        void refetchWorkers();
+        void utils.worker.getAllWages.invalidate();
+        void utils.workshift.getWorkShiftsByStoreAndDate.invalidate(workshiftQueryInput);
+      },
+      onError: (err) => {
+        setDeleteError(err.message || "Ismeretlen hiba a törléskor.");
+      },
+    });
 
   const storeOptions = stores.map((s) => ({ label: s.name, value: s.id }));
 
@@ -714,30 +722,46 @@ export default function WorkersPage() {
       {/* Delete worker confirm */}
       <Dialog
         open={!!workerToDelete}
-        onOpenChange={(open) => !open && setWorkerToDelete(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setWorkerToDelete(null);
+            setDeleteError(null);
+          }
+        }}
       >
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Dolgozó törlése</DialogTitle>
             <DialogDescription>
-              Biztos törlöd <b>{workerToDelete?.name}</b>-t? Ez törli a
-              hozzá tartozó műszakokat is.
+              Biztos törlöd <b>{workerToDelete?.name}</b>-t? Ez törli a hozzá
+              tartozó műszakokat és béreket is.
             </DialogDescription>
           </DialogHeader>
+          {deleteError && (
+            <div className="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-700">
+              {deleteError}
+            </div>
+          )}
           <DialogFooter>
             <Button
               variant="secondary"
-              onClick={() => setWorkerToDelete(null)}
+              onClick={() => {
+                setWorkerToDelete(null);
+                setDeleteError(null);
+              }}
             >
               Mégse
             </Button>
             <Button
               variant="destructive"
-              onClick={() =>
-                workerToDelete && deleteWorker({ id: workerToDelete.id })
-              }
+              disabled={isDeletingWorker}
+              onClick={() => {
+                if (!workerToDelete) return;
+                setDeleteError(null);
+                deleteWorker({ id: workerToDelete.id });
+              }}
             >
-              Törlés
+              {isDeletingWorker ? "Törlés..." : "Törlés"}
             </Button>
           </DialogFooter>
         </DialogContent>
