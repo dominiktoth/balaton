@@ -208,6 +208,10 @@ export default function WorkersPage() {
     (w) => !selectedStore || w.stores?.some((s) => s.id === selectedStore),
   );
 
+  // "Függőben" only counts the current season (May 1 of this year onward)
+  const seasonStart = defaultSeasonStart();
+  const seasonStartMs = new Date(seasonStart).getTime();
+
   return (
     <div className="mx-auto max-w-4xl px-4 py-10 md:px-0">
       {/* Header */}
@@ -278,9 +282,12 @@ export default function WorkersPage() {
               ? hasValid
               : hasValid && parsed !== persisted;
 
-          // Per-worker totals (across all dates)
+          // Per-worker totals — Függőben is current-season-only (May 1
+          // of the current year onward); "Eddig kifizetve" stays all-time.
           const myWages = allWages.filter((w) => w.workerId === worker.id);
-          const pendingWages = myWages.filter((w) => !w.paid);
+          const pendingWages = myWages.filter(
+            (w) => !w.paid && new Date(w.date).getTime() >= seasonStartMs,
+          );
           const pendingTotal = pendingWages.reduce((s, w) => s + w.amount, 0);
           const paidTotal = myWages
             .filter((w) => w.paid)
@@ -416,7 +423,12 @@ export default function WorkersPage() {
               {/* Status + payout */}
               <div className="flex flex-wrap items-center gap-4 border-t bg-gradient-to-br from-amber-50/40 via-transparent to-emerald-50/40 px-5 py-4">
                 <div className="grid flex-1 grid-cols-[auto_auto] gap-x-6 gap-y-1">
-                  <div className="text-xs text-muted-foreground">Függőben</div>
+                  <div className="text-xs text-muted-foreground">
+                    Függőben{" "}
+                    <span className="text-[10px] uppercase tracking-wider">
+                      ({new Date().getFullYear()})
+                    </span>
+                  </div>
                   <div className="text-lg font-bold text-amber-700">
                     {pendingTotal.toLocaleString()} Ft
                     <span className="ml-2 text-xs font-normal text-muted-foreground">
@@ -801,7 +813,10 @@ export default function WorkersPage() {
               className="bg-emerald-600 hover:bg-emerald-700"
               onClick={() => {
                 if (!payoutWorker) return;
-                payAllPending({ workerId: payoutWorker.workerId });
+                payAllPending({
+                  workerId: payoutWorker.workerId,
+                  dateFrom: seasonStart,
+                });
               }}
             >
               {isPayingOut ? "..." : "Kifizetés"}
