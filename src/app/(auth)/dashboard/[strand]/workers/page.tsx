@@ -51,6 +51,7 @@ export default function WorkersPage() {
 
   // Per-worker UI state
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [detailRange, setDetailRange] = useState<
     Record<string, { from: string; to: string }>
@@ -62,6 +63,7 @@ export default function WorkersPage() {
 
   useEffect(() => {
     setDrafts({});
+    setNoteDrafts({});
   }, [selectedDate, selectedStore]);
 
   // Mutations — workshift create/delete with optimistic cache update on today
@@ -277,10 +279,16 @@ export default function WorkersPage() {
           const persisted = wageOnShift?.amount;
           const parsed = inputValue.trim() === "" ? null : Number(inputValue);
           const hasValid = parsed !== null && !Number.isNaN(parsed) && parsed >= 0;
-          const isDirty =
+
+          const noteDraft = noteDrafts[worker.id];
+          const persistedNote = todaysWorkshift?.note ?? "";
+          const noteValue = noteDraft !== undefined ? noteDraft : persistedNote;
+          const amountDirty =
             persisted == null
               ? hasValid
               : hasValid && parsed !== persisted;
+          const noteDirty = noteValue !== persistedNote;
+          const isDirty = amountDirty || noteDirty;
 
           // Per-worker totals — Függőben is current-season-only (May 1
           // of the current year onward); "Eddig kifizetve" stays all-time.
@@ -313,12 +321,14 @@ export default function WorkersPage() {
 
           const handleSave = () => {
             if (!hasValid || parsed === null) return;
+            const trimmedNote = noteValue.trim();
             if (todaysWorkshift) {
               upsertWageForWorkshift({
                 workShiftId: todaysWorkshift.id,
                 workerId: worker.id,
                 amount: parsed,
                 date: selectedDate,
+                note: trimmedNote,
               });
             } else {
               createWorkShift({
@@ -326,10 +336,16 @@ export default function WorkersPage() {
                 storeId: selectedStore || firstStoreId,
                 date: selectedDate,
                 amount: parsed,
+                note: trimmedNote || undefined,
               });
             }
             setDrafts((d) => {
               const next = { ...d };
+              delete next[worker.id];
+              return next;
+            });
+            setNoteDrafts((n) => {
+              const next = { ...n };
               delete next[worker.id];
               return next;
             });
@@ -380,43 +396,56 @@ export default function WorkersPage() {
 
               {/* Today's row */}
               <div className="px-5 py-4">
-                <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/30 p-3">
-                  <span className="text-sm font-medium">Ma ({selectedDate}):</span>
-                  <Input
-                    type="number"
-                    min="0"
-                    inputMode="numeric"
-                    value={inputValue}
-                    placeholder={
-                      worker.dailyWage ? String(worker.dailyWage) : "0"
-                    }
-                    onChange={(e) =>
-                      setDrafts((d) => ({ ...d, [worker.id]: e.target.value }))
-                    }
-                    className="w-32"
-                  />
-                  <span className="text-sm text-muted-foreground">Ft</span>
-                  <Button
-                    size="sm"
-                    onClick={handleSave}
-                    disabled={!hasValid || !isDirty}
-                  >
-                    {todaysWorkshift ? "Frissítés" : "Mentés"}
-                  </Button>
-                  {todaysWorkshift && (
-                    <>
-                      <span className="ml-auto text-xs font-medium text-emerald-700">
-                        ✓ rögzítve
-                      </span>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => deleteWorkShift({ id: todaysWorkshift.id })}
-                      >
-                        Törlés
-                      </Button>
-                    </>
-                  )}
+                <div className="rounded-lg border bg-muted/30 p-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="text-sm font-medium">Ma ({selectedDate}):</span>
+                    <Input
+                      type="number"
+                      min="0"
+                      inputMode="numeric"
+                      value={inputValue}
+                      placeholder={
+                        worker.dailyWage ? String(worker.dailyWage) : "0"
+                      }
+                      onChange={(e) =>
+                        setDrafts((d) => ({ ...d, [worker.id]: e.target.value }))
+                      }
+                      className="w-32"
+                    />
+                    <span className="text-sm text-muted-foreground">Ft</span>
+                    <Button
+                      size="sm"
+                      onClick={handleSave}
+                      disabled={!hasValid || !isDirty}
+                    >
+                      {todaysWorkshift ? "Frissítés" : "Mentés"}
+                    </Button>
+                    {todaysWorkshift && (
+                      <>
+                        <span className="ml-auto text-xs font-medium text-emerald-700">
+                          ✓ rögzítve
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => deleteWorkShift({ id: todaysWorkshift.id })}
+                        >
+                          Törlés
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <Input
+                      type="text"
+                      value={noteValue}
+                      placeholder="Megjegyzés (opcionális) — pl. csak fél nap, bónusz, stb."
+                      onChange={(e) =>
+                        setNoteDrafts((n) => ({ ...n, [worker.id]: e.target.value }))
+                      }
+                      className="flex-1"
+                    />
+                  </div>
                 </div>
               </div>
 

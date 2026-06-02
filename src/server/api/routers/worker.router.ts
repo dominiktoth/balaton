@@ -93,31 +93,42 @@ export const workerRouter = createTRPCRouter({
         workerId: z.string(),
         amount: z.number().nonnegative(),
         date: z.string(),
+        note: z.string().optional(),
       }),
     )
     .mutation(async ({ input }) => {
-      const existing = await db.wage.findUnique({
-        where: { workShiftId: input.workShiftId },
-      });
-      if (existing) {
-        return db.wage.update({
-          where: { id: existing.id },
-          data: { amount: input.amount },
+      return db.$transaction(async (tx) => {
+        // Always sync the workshift's note when the field is provided
+        // (empty string -> clears the note).
+        if (input.note !== undefined) {
+          await tx.workShift.update({
+            where: { id: input.workShiftId },
+            data: { note: input.note === "" ? null : input.note },
+          });
+        }
+        const existing = await tx.wage.findUnique({
+          where: { workShiftId: input.workShiftId },
         });
-      }
-      const wage = await db.wage.create({
-        data: {
-          workerId: input.workerId,
-          workShiftId: input.workShiftId,
-          date: new Date(input.date),
-          amount: input.amount,
-        },
+        if (existing) {
+          return tx.wage.update({
+            where: { id: existing.id },
+            data: { amount: input.amount },
+          });
+        }
+        const wage = await tx.wage.create({
+          data: {
+            workerId: input.workerId,
+            workShiftId: input.workShiftId,
+            date: new Date(input.date),
+            amount: input.amount,
+          },
+        });
+        await tx.workShift.update({
+          where: { id: input.workShiftId },
+          data: { wageId: wage.id },
+        });
+        return wage;
       });
-      await db.workShift.update({
-        where: { id: input.workShiftId },
-        data: { wageId: wage.id },
-      });
-      return wage;
     }),
 
   payAllPending: protectedProcedure
