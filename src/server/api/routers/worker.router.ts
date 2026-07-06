@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createTRPCRouter, protectedProcedure } from '../trpc';
 import { createWorker, getWorkers, getWorkerById, deleteWorker, getWorkersByStore, updateWorker } from '../services/worker.services';
+import { coverWageFromAdvances, refundWageAdvance, createAdvance, deleteAdvance } from '../services/advance.services';
 import { db } from "~/server/db";
 
 export const workerRouter = createTRPCRouter({
@@ -54,6 +55,8 @@ export const workerRouter = createTRPCRouter({
           workerId: true,
           paid: true,
           paidAt: true,
+          paidAmount: true,
+          advanceConsumed: true,
           workShift: {
             select: {
               storeId: true,
@@ -68,12 +71,32 @@ export const workerRouter = createTRPCRouter({
   setWagePaid: protectedProcedure
     .input(z.object({ id: z.string(), paid: z.boolean() }))
     .mutation(async ({ input }) => {
-      return db.wage.update({
-        where: { id: input.id },
-        data: {
-          paid: input.paid,
-          paidAt: input.paid ? new Date() : null,
-        },
+      return db.$transaction(async (tx) => {
+        const wage = await tx.wage.findUnique({ where: { id: input.id } });
+        if (!wage) throw new Error('A bér nem található.');
+        if (input.paid) {
+          return tx.wage.update({
+            where: { id: input.id },
+            data: {
+              paid: true,
+              paidAt: new Date(),
+              paidAmount: wage.amount,
+            },
+          });
+        }
+        // Unpay: give any advance-sourced cover back to the advances
+        if (wage.advanceConsumed > 0) {
+          await refundWageAdvance(tx, wage.workerId, wage.advanceConsumed);
+        }
+        return tx.wage.update({
+          where: { id: input.id },
+          data: {
+            paid: false,
+            paidAt: null,
+            paidAmount: 0,
+            advanceConsumed: 0,
+          },
+        });
       });
     }),
 
@@ -110,10 +133,33 @@ export const workerRouter = createTRPCRouter({
           where: { workShiftId: input.workShiftId },
         });
         if (existing) {
-          return tx.wage.update({
+          // If shrinking below what's already covered, refund the excess
+          // advance cover so the advance balance stays truthful.
+          let paidAmount = existing.paidAmount;
+          let advanceConsumed = existing.advanceConsumed;
+          if (paidAmount > input.amount) {
+            const excess = paidAmount - input.amount;
+            const refund = Math.min(excess, advanceConsumed);
+            if (refund > 0) {
+              await refundWageAdvance(tx, existing.workerId, refund);
+              advanceConsumed -= refund;
+            }
+            paidAmount = input.amount;
+          }
+          const fullyPaid = paidAmount >= input.amount;
+          const updated = await tx.wage.update({
             where: { id: existing.id },
-            data: { amount: input.amount },
+            data: {
+              amount: input.amount,
+              paidAmount,
+              advanceConsumed,
+              paid: fullyPaid,
+              paidAt: fullyPaid ? (existing.paidAt ?? new Date()) : null,
+            },
           });
+          // If the amount grew and there's an open advance, cover the increase
+          await coverWageFromAdvances(tx, existing.workerId, existing.id);
+          return tx.wage.findUnique({ where: { id: updated.id } });
         }
         const wage = await tx.wage.create({
           data: {
@@ -127,7 +173,8 @@ export const workerRouter = createTRPCRouter({
           where: { id: input.workShiftId },
           data: { wageId: wage.id },
         });
-        return wage;
+        await coverWageFromAdvances(tx, input.workerId, wage.id);
+        return tx.wage.findUnique({ where: { id: wage.id } });
       });
     }),
 
@@ -154,15 +201,47 @@ export const workerRouter = createTRPCRouter({
             }
           : {}),
       };
-      const pending = await db.wage.findMany({
-        where,
-        select: { amount: true },
+      return db.$transaction(async (tx) => {
+        const pending = await tx.wage.findMany({ where });
+        // Only the uncovered part counts as cash handed over now
+        const totalAmount = pending.reduce(
+          (s, w) => s + Math.max(0, w.amount - w.paidAmount),
+          0,
+        );
+        const now = new Date();
+        for (const w of pending) {
+          await tx.wage.update({
+            where: { id: w.id },
+            data: { paid: true, paidAt: now, paidAmount: w.amount },
+          });
+        }
+        return { count: pending.length, totalAmount };
       });
-      const totalAmount = pending.reduce((s, w) => s + w.amount, 0);
-      const result = await db.wage.updateMany({
-        where,
-        data: { paid: true, paidAt: new Date() },
+    }),
+
+  createAdvance: protectedProcedure
+    .input(
+      z.object({
+        workerId: z.string(),
+        amount: z.number().positive(),
+        date: z.string(),
+        note: z.string().optional(),
+        dateFrom: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      return createAdvance({
+        workerId: input.workerId,
+        amount: input.amount,
+        date: new Date(input.date),
+        note: input.note,
+        dateFrom: input.dateFrom ? new Date(input.dateFrom) : undefined,
       });
-      return { count: result.count, totalAmount };
+    }),
+
+  deleteAdvance: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input }) => {
+      return deleteAdvance(input.id);
     }),
 });

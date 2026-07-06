@@ -1,4 +1,5 @@
 import { db } from '../../db';
+import { coverWageFromAdvances, refundWageAdvance } from './advance.services';
 
 export async function createWorkShift({
   workerId,
@@ -42,6 +43,9 @@ export async function createWorkShift({
         where: { id: workShift.id },
         data: { wageId: wage.id },
       });
+      // If the worker has an open advance, it covers this day automatically
+      await coverWageFromAdvances(tx, workerId, wage.id);
+      wage = await tx.wage.findUnique({ where: { id: wage.id } });
     }
 
     return { workShift, wage };
@@ -86,7 +90,14 @@ export async function getWorkShiftsByWorker(workerId: string) {
 }
 
 export async function deleteWorkShift(id: string) {
-  return db.workShift.delete({
-    where: { id },
+  return db.$transaction(async (tx) => {
+    // If this shift's wage was covered from an advance, give that cover back
+    const wage = await tx.wage.findUnique({ where: { workShiftId: id } });
+    if (wage && wage.advanceConsumed > 0) {
+      await refundWageAdvance(tx, wage.workerId, wage.advanceConsumed);
+    }
+    return tx.workShift.delete({
+      where: { id },
+    });
   });
 } 

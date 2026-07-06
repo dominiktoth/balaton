@@ -90,6 +90,8 @@ export default function WorkersPage() {
               date: new Date(vars.date),
               paid: false,
               paidAt: null,
+              paidAmount: 0,
+              advanceConsumed: 0,
               createdAt: new Date(),
               updatedAt: new Date(),
             }
@@ -154,9 +156,36 @@ export default function WorkersPage() {
     api.worker.payAllPending.useMutation({
       onSuccess: () => {
         void utils.worker.getAllWages.invalidate();
+        void utils.workshift.getWorkShiftsByStoreAndDate.invalidate(workshiftQueryInput);
         setPayoutWorker(null);
       },
     });
+
+  // Advance (előleg) dialog state + mutations
+  const [advanceWorker, setAdvanceWorker] = useState<
+    | null
+    | { workerId: string; name: string }
+  >(null);
+  const [advAmount, setAdvAmount] = useState("");
+  const [advDate, setAdvDate] = useState<string>(() => todayStr());
+  const [advNote, setAdvNote] = useState("");
+  const { mutate: createAdvance, isPending: isCreatingAdvance } =
+    api.worker.createAdvance.useMutation({
+      onSuccess: () => {
+        setAdvanceWorker(null);
+        setAdvAmount("");
+        setAdvDate(todayStr());
+        setAdvNote("");
+        void refetchWorkers();
+        void utils.worker.getAllWages.invalidate();
+        void utils.workshift.getWorkShiftsByStoreAndDate.invalidate(workshiftQueryInput);
+      },
+    });
+  const { mutate: deleteAdvance } = api.worker.deleteAdvance.useMutation({
+    onSuccess: () => {
+      void refetchWorkers();
+    },
+  });
 
   // Worker CRUD dialogs
   const [addOpen, setAddOpen] = useState(false);
@@ -292,14 +321,23 @@ export default function WorkersPage() {
 
           // Per-worker totals — Függőben is current-season-only (May 1
           // of the current year onward); "Eddig kifizetve" stays all-time.
+          // With partial payments, pending is the uncovered slice of each wage.
           const myWages = allWages.filter((w) => w.workerId === worker.id);
           const pendingWages = myWages.filter(
-            (w) => !w.paid && new Date(w.date).getTime() >= seasonStartMs,
+            (w) =>
+              w.paidAmount < w.amount &&
+              new Date(w.date).getTime() >= seasonStartMs,
           );
-          const pendingTotal = pendingWages.reduce((s, w) => s + w.amount, 0);
-          const paidTotal = myWages
-            .filter((w) => w.paid)
-            .reduce((s, w) => s + w.amount, 0);
+          const pendingTotal = pendingWages.reduce(
+            (s, w) => s + (w.amount - w.paidAmount),
+            0,
+          );
+          const paidTotal = myWages.reduce((s, w) => s + w.paidAmount, 0);
+          const advances = worker.advances ?? [];
+          const advanceBalance = advances.reduce(
+            (s, a) => s + (a.amount - a.used),
+            0,
+          );
 
           const isExpanded = !!expanded[worker.id];
           const range =
@@ -422,8 +460,16 @@ export default function WorkersPage() {
                     </Button>
                     {todaysWorkshift && (
                       <>
-                        <span className="ml-auto text-xs font-medium text-emerald-700">
-                          ✓ rögzítve
+                        <span
+                          className={`ml-auto text-xs font-medium ${
+                            wageOnShift?.paid && wageOnShift.advanceConsumed > 0
+                              ? "text-sky-700"
+                              : "text-emerald-700"
+                          }`}
+                        >
+                          {wageOnShift?.paid && wageOnShift.advanceConsumed > 0
+                            ? "✓ előlegből fizetve"
+                            : "✓ rögzítve"}
                         </span>
                         <Button
                           size="sm"
@@ -464,6 +510,16 @@ export default function WorkersPage() {
                       ({pendingWages.length} nap)
                     </span>
                   </div>
+                  {advanceBalance > 0 && (
+                    <>
+                      <div className="text-xs text-muted-foreground">
+                        Előleg egyenleg
+                      </div>
+                      <div className="text-sm font-semibold text-sky-700">
+                        {advanceBalance.toLocaleString()} Ft
+                      </div>
+                    </>
+                  )}
                   <div className="text-xs text-muted-foreground">
                     Eddig kifizetve
                   </div>
@@ -488,6 +544,15 @@ export default function WorkersPage() {
                   )}
                   <Button
                     variant="outline"
+                    className="border-sky-300 text-sky-700 hover:bg-sky-50"
+                    onClick={() =>
+                      setAdvanceWorker({ workerId: worker.id, name: worker.name })
+                    }
+                  >
+                    Előleg
+                  </Button>
+                  <Button
+                    variant="outline"
                     onClick={() =>
                       setExpanded((e) => ({
                         ...e,
@@ -508,6 +573,56 @@ export default function WorkersPage() {
               {/* Expanded details */}
               {isExpanded && (
                 <div className="border-t bg-muted/20 px-5 py-4">
+                  {advances.length > 0 && (
+                    <div className="mb-4">
+                      <h3 className="mb-2 text-sm font-semibold text-sky-800">
+                        Előlegek
+                      </h3>
+                      <table className="w-full rounded border bg-background">
+                        <thead>
+                          <tr className="bg-sky-50">
+                            <th className="p-2 text-left">Dátum</th>
+                            <th className="p-2 text-left">Összeg</th>
+                            <th className="p-2 text-left">Ledolgozva</th>
+                            <th className="p-2 text-left">Maradék</th>
+                            <th className="p-2 text-left">Megjegyzés</th>
+                            <th className="p-2 text-left"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {advances.map((a) => (
+                            <tr key={a.id} className="border-t">
+                              <td className="p-2">
+                                {new Date(a.date).toLocaleDateString()}
+                              </td>
+                              <td className="p-2">
+                                {a.amount.toLocaleString()} Ft
+                              </td>
+                              <td className="p-2">
+                                {a.used.toLocaleString()} Ft
+                              </td>
+                              <td className="p-2 font-semibold text-sky-700">
+                                {(a.amount - a.used).toLocaleString()} Ft
+                              </td>
+                              <td className="p-2">{a.note ?? "-"}</td>
+                              <td className="p-2 text-right">
+                                {a.used === 0 && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="text-red-600 hover:text-red-700"
+                                    onClick={() => deleteAdvance({ id: a.id })}
+                                  >
+                                    Törlés
+                                  </Button>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                   <div className="mb-3 flex flex-wrap items-end gap-3">
                     <div>
                       <Label htmlFor={`from-${worker.id}`}>Tól</Label>
@@ -556,10 +671,30 @@ export default function WorkersPage() {
                         const storeName = storeId
                           ? (stores.find((s) => s.id === storeId)?.name ?? "-")
                           : "-";
+                        const fromAdvance = w.paid && w.advanceConsumed > 0;
+                        const partial = !w.paid && w.paidAmount > 0;
+                        const chipClass = fromAdvance
+                          ? "border-sky-300 bg-sky-100 text-sky-700 hover:bg-sky-200"
+                          : w.paid
+                            ? "border-emerald-300 bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                            : "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100";
+                        const chipLabel = fromAdvance
+                          ? "Előlegből"
+                          : w.paid
+                            ? "Kifizetve"
+                            : partial
+                              ? `Részben (${w.paidAmount.toLocaleString()}/${w.amount.toLocaleString()})`
+                              : "Függőben";
                         return (
                           <tr
                             key={w.id}
-                            className={`border-t ${w.paid ? "bg-emerald-50/60" : ""}`}
+                            className={`border-t ${
+                              fromAdvance
+                                ? "bg-sky-50/60"
+                                : w.paid
+                                  ? "bg-emerald-50/60"
+                                  : ""
+                            }`}
                           >
                             <td className="p-2">
                               {new Date(w.date).toLocaleDateString()}
@@ -575,15 +710,13 @@ export default function WorkersPage() {
                                 onClick={() =>
                                   setWagePaid({ id: w.id, paid: !w.paid })
                                 }
-                                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition ${
-                                  w.paid
-                                    ? "border-emerald-300 bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
-                                    : "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
-                                }`}
+                                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition ${chipClass}`}
                                 title={
                                   w.paidAt
-                                    ? `Kifizetve: ${new Date(w.paidAt).toLocaleString()}`
-                                    : "Nincs kifizetve"
+                                    ? `Kifizetve: ${new Date(w.paidAt).toLocaleString()}${w.advanceConsumed > 0 ? ` · ebből előlegből: ${w.advanceConsumed.toLocaleString()} Ft` : ""}`
+                                    : partial
+                                      ? `Részben fedezve: ${w.paidAmount.toLocaleString()} / ${w.amount.toLocaleString()} Ft`
+                                      : "Nincs kifizetve"
                                 }
                               >
                                 {w.paid ? (
@@ -591,7 +724,7 @@ export default function WorkersPage() {
                                 ) : (
                                   <IconX className="size-3.5" />
                                 )}
-                                {w.paid ? "Kifizetve" : "Függőben"}
+                                {chipLabel}
                               </button>
                             </td>
                           </tr>
@@ -851,6 +984,90 @@ export default function WorkersPage() {
               {isPayingOut ? "..." : "Kifizetés"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Advance (Előleg) Dialog */}
+      <Dialog
+        open={!!advanceWorker}
+        onOpenChange={(open) => !open && setAdvanceWorker(null)}
+      >
+        <DialogContent className="max-w-md">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!advanceWorker) return;
+              const amount = parseFloat(advAmount);
+              if (Number.isNaN(amount) || amount <= 0) return;
+              createAdvance({
+                workerId: advanceWorker.workerId,
+                amount,
+                date: advDate,
+                note: advNote.trim() || undefined,
+                dateFrom: seasonStart,
+              });
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>Előleg — {advanceWorker?.name}</DialogTitle>
+              <DialogDescription>
+                Az összeg először a függőben lévő napokat fizeti ki, a maradék
+                előlegként a következő ledolgozott napokat fedezi automatikusan,
+                amíg el nem fogy.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="mt-4 space-y-4">
+              <div>
+                <Label htmlFor="adv-amount">Összeg (Ft)</Label>
+                <Input
+                  id="adv-amount"
+                  type="number"
+                  min="1"
+                  inputMode="numeric"
+                  value={advAmount}
+                  onChange={(e) => setAdvAmount(e.target.value)}
+                  placeholder="Pl. 200000"
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="adv-date">Dátum</Label>
+                <Input
+                  id="adv-date"
+                  type="date"
+                  value={advDate}
+                  onChange={(e) => setAdvDate(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="adv-note">Megjegyzés (opcionális)</Label>
+                <Input
+                  id="adv-note"
+                  type="text"
+                  value={advNote}
+                  onChange={(e) => setAdvNote(e.target.value)}
+                  placeholder="Pl. heti előleg"
+                />
+              </div>
+            </div>
+            <DialogFooter className="mt-4">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setAdvanceWorker(null)}
+              >
+                Mégse
+              </Button>
+              <Button
+                type="submit"
+                disabled={isCreatingAdvance}
+                className="bg-sky-600 hover:bg-sky-700"
+              >
+                {isCreatingAdvance ? "Mentés..." : "Előleg rögzítése"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

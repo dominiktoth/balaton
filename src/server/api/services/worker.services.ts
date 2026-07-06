@@ -19,7 +19,7 @@ export async function getWorkers(strandSlug?: string) {
       ? { stores: { some: { strand: { slug: strandSlug } } } }
       : undefined,
     orderBy: { name: 'asc' },
-    include: { stores: true },
+    include: { stores: true, advances: { orderBy: { date: 'desc' } } },
   });
 }
 
@@ -38,6 +38,7 @@ export async function deleteWorker(workerId: string) {
     // the worker delete. Wipe everything tied to the worker explicitly.
     await tx.wage.deleteMany({ where: { workerId } });
     await tx.workShift.deleteMany({ where: { workerId } });
+    await tx.advance.deleteMany({ where: { workerId } });
     return tx.worker.delete({ where: { id: workerId } });
   });
 }
