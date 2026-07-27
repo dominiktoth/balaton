@@ -10,6 +10,7 @@ import {
   IconUsers,
   IconCurrencyForint,
   IconPigMoney,
+  IconChartHistogram,
   IconChevronDown,
   IconCheck,
 } from "@tabler/icons-react"
@@ -40,6 +41,7 @@ function buildNav(strandSlug: string) {
   const base = `/dashboard/${strandSlug}`
   return [
     { title: "Dashboard", url: base, icon: IconDashboard },
+    { title: "Statisztika", url: `${base}/statistics`, icon: IconChartHistogram },
     { title: "Üzletek", url: `${base}/stores`, icon: IconShoppingCart },
     { title: "Felhasználók", url: `${base}/users`, icon: IconUser },
     { title: "Dolgozók", url: `${base}/workers`, icon: IconUsers },

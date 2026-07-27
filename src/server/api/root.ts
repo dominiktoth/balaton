@@ -9,6 +9,7 @@ import { workerRouter } from "./routers/worker.router";
 import { workshiftRouter } from "./routers/workshift.router";
 import { strandRouter } from "./routers/strand.router";
 import { investmentRouter } from "./routers/investment.router";
+import { statsRouter } from "./routers/stats.router";
 
 /**
  * This is the primary router for your server.
@@ -26,6 +27,7 @@ export const appRouter = createTRPCRouter({
   workshift: workshiftRouter,
   strand: strandRouter,
   investment: investmentRouter,
+  stats: statsRouter,
 });
 
 // export type definition of API

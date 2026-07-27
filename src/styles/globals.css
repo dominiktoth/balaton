@@ -49,6 +49,15 @@ button {
   --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
   --sidebar-border: oklch(0.92 0.004 286.32);
   --sidebar-ring: oklch(0.623 0.214 259.815);
+
+  /* Statisztika diagramok – validált kategorikus paletta (világos felület) */
+  --viz-income: #2a78d6;
+  --viz-expense: #eb6834;
+  --viz-wage: #4a3aa7;
+  --viz-profit: #1baf7a;
+  --viz-investment: #eda100;
+  --viz-grid: #e1e0d9;
+  --viz-axis: #898781;
 }
 
 .dark {
@@ -117,6 +126,15 @@ button {
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.552 0.016 285.938);
+
+  /* Statisztika diagramok – ugyanazok a színek sötét felületre léptetve */
+  --viz-income: #3987e5;
+  --viz-expense: #d95926;
+  --viz-wage: #9085e9;
+  --viz-profit: #199e70;
+  --viz-investment: #c98500;
+  --viz-grid: #2c2c2a;
+  --viz-axis: #898781;
 }
 
 @theme inline {
