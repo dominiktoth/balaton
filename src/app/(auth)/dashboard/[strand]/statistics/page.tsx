@@ -134,6 +134,19 @@ export default function StatisticsPage() {
     before: range.from,
   });
 
+  // A tartozás (függő bér) mindig a szezonra vonatkozik, függetlenül attól,
+  // milyen ablakot néz a felhasználó. Ha épp a szezon van kiválasztva, ez
+  // ugyanaz a lekérdezés, mint a fenti — a cache összevonja.
+  const seasonPeriod = useMemo(
+    () => resolvePeriod("season", year, custom, firstActivity),
+    [year, custom, firstActivity],
+  );
+  const { data: seasonRaw } = api.stats.getStats.useQuery({
+    strandSlug,
+    from: seasonPeriod.from,
+    to: seasonPeriod.to,
+  });
+
   useEffect(() => {
     if (!opening?.firstActivity) return;
     const key = dayKey(opening.firstActivity);
@@ -227,9 +240,22 @@ export default function StatisticsPage() {
   const recentAvgProfit =
     recentDays.length > 0 ? recentSum.profit / recentDays.length : 0;
 
+  /** Szezonra vetített tartozás: függő bér dolgozónként + nyitott előleg. */
+  const seasonWorkers = useMemo(
+    () => perWorker(scopeToStore(seasonRaw ?? EMPTY, storeId)),
+    [seasonRaw, storeId],
+  );
+  const seasonUnpaid = useMemo(
+    () => seasonWorkers.reduce((acc, w) => acc + w.unpaid, 0),
+    [seasonWorkers],
+  );
+  const seasonWage = useMemo(
+    () => seasonWorkers.reduce((acc, w) => acc + w.wage, 0),
+    [seasonWorkers],
+  );
   const openAdvances = useMemo(
-    () => workerStats.reduce((acc, w) => acc + w.advanceBalance, 0),
-    [workerStats],
+    () => seasonWorkers.reduce((acc, w) => acc + w.advanceBalance, 0),
+    [seasonWorkers],
   );
 
   const toDate = isToDate(range);
@@ -249,7 +275,12 @@ export default function StatisticsPage() {
         compareLabel,
         weekdays,
         stores: storeStats,
-        workers: workerStats,
+        liabilities: {
+          unpaidWage: seasonUnpaid,
+          workers: seasonWorkers,
+          seasonLabel: String(year),
+          seasonWage,
+        },
         allStores: storeId === "all",
       }),
     [
@@ -260,7 +291,10 @@ export default function StatisticsPage() {
       compareLabel,
       weekdays,
       storeStats,
-      workerStats,
+      seasonUnpaid,
+      seasonWorkers,
+      seasonWage,
+      year,
       storeId,
     ],
   );

@@ -651,11 +651,31 @@ export function buildInsights(input: {
   compareLabel: string;
   weekdays: (GroupBucket & { avgProfit: number; incomePerShift: number })[];
   stores: StoreStat[];
-  workers: WorkerStat[];
+  /**
+   * Tartozás és kint lévő pénz: mindig a *szezonra* számolva, nem a
+   * kiválasztott ablakra — egy 7 napos nézet nem tünteti el a tartozást,
+   * és a "teljes múlt" sem hoz be lezárt szezonokat.
+   */
+  liabilities: {
+    unpaidWage: number;
+    /** Csak azok, akiknél van függő bér vagy nyitott előleg. */
+    workers: WorkerStat[];
+    /** Melyik szezonra vonatkozik, pl. "2026". */
+    seasonLabel: string;
+    /** A szezon teljes bérköltsége – ehhez mérjük, mennyire sok a függő. */
+    seasonWage: number;
+  };
   allStores: boolean;
 }): Insight[] {
-  const { daily, totals, compareTotals, compareLabel, weekdays, stores, workers } =
-    input;
+  const {
+    daily,
+    totals,
+    compareTotals,
+    compareLabel,
+    weekdays,
+    stores,
+    liabilities,
+  } = input;
   const insights: Insight[] = [];
 
   if (totals.activeDays === 0) {
@@ -795,13 +815,19 @@ export function buildInsights(input: {
     }
   }
 
-  // 7. Kint lévő pénz
-  const unpaidWorkers = workers.filter((w) => w.unpaid > 0);
-  if (totals.unpaidWage > 0) {
+  // 7. Kint lévő pénz — mindig a szezonra, nem a kiválasztott ablakra
+  const unpaidWorkers = liabilities.workers.filter((w) => w.unpaid > 0);
+  if (liabilities.unpaidWage > 0) {
     insights.push({
       id: "unpaid",
-      tone: totals.unpaidWage > totals.wage * 0.4 ? "warning" : "info",
-      title: `${formatHuf(totals.unpaidWage)} bér függőben`,
+      tone:
+        liabilities.seasonWage > 0 &&
+        liabilities.unpaidWage > liabilities.seasonWage * 0.4
+          ? "warning"
+          : "info",
+      title: `${formatHuf(liabilities.unpaidWage)} bér függőben a ${
+        liabilities.seasonLabel
+      }-as szezonban`,
       detail: `${unpaidWorkers.length} dolgozónál: ${unpaidWorkers
         .slice(0, 4)
         .map((w) => `${w.name} (${formatHuf(w.unpaid)})`)
@@ -809,15 +835,18 @@ export function buildInsights(input: {
     });
   }
 
-  const advances = workers.reduce((acc, w) => acc + w.advanceBalance, 0);
+  const advances = liabilities.workers.reduce(
+    (acc, w) => acc + w.advanceBalance,
+    0,
+  );
   if (advances > 0) {
     insights.push({
       id: "advances",
       tone: "info",
       title: `${formatHuf(advances)} nyitott előleg`,
       detail: `Már kiadott pénz, amit a következő napibérek fognak lefedni (${
-        workers.filter((w) => w.advanceBalance > 0).length
-      } dolgozó).`,
+        liabilities.workers.filter((w) => w.advanceBalance > 0).length
+      } dolgozó). Ez élő egyenleg, nem szezonra vetítve.`,
     });
   }
 

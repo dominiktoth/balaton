@@ -262,6 +262,7 @@ export function SeasonProgressChart({
   const hasNegative = data.some(
     (d) => d.current < 0 || (d.previous ?? 0) < 0,
   );
+  const lastKey = data[data.length - 1]?.key;
   return (
     <ResponsiveContainer width="100%" height={300}>
       <AreaChart data={data} margin={{ top: 16, right: 12, left: 8, bottom: 0 }}>
@@ -299,6 +300,16 @@ export function SeasonProgressChart({
           }
         />
         {hasNegative && <ReferenceLine y={0} stroke={VIZ.axis} />}
+        {/* A mai napot jelöl */}
+        {lastKey && (
+          <ReferenceLine
+            x={lastKey}
+            stroke={color}
+            strokeOpacity={0.2}
+            strokeWidth={1.5}
+            strokeDasharray="3 3"
+          />
+        )}
         <Area
           type="monotone"
           dataKey="previous"
@@ -308,7 +319,9 @@ export function SeasonProgressChart({
           strokeDasharray="5 4"
           fill="none"
           connectNulls={false}
-          isAnimationActive={false}
+          isAnimationActive={true}
+          animationDuration={900}
+          animationEasing="ease-in-out"
         />
         <Area
           type="monotone"
@@ -317,7 +330,9 @@ export function SeasonProgressChart({
           stroke={color}
           strokeWidth={2.5}
           fill="url(#viz-progress)"
-          isAnimationActive={false}
+          isAnimationActive={true}
+          animationDuration={900}
+          animationEasing="ease-in-out"
         />
       </AreaChart>
     </ResponsiveContainer>
