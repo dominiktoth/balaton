@@ -30,6 +30,7 @@ import {
   formatShort,
   type GroupBucket,
   type GroupMode,
+  type ProgressPoint,
   type StoreStat,
 } from "~/lib/stats";
 
@@ -187,6 +188,138 @@ export function TrendChart({
           )}
         </Line>
       </ComposedChart>
+    </ResponsiveContainer>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Szezon állása: idei kumulált görbe a bázis mellett                  */
+/* ------------------------------------------------------------------ */
+
+function ProgressTooltip({
+  active,
+  payload,
+  metricLabel,
+  baseLabel,
+  color,
+}: RechartsTooltipProps & {
+  metricLabel: string;
+  baseLabel: string;
+  color?: string;
+}) {
+  if (!active || !payload?.length) return null;
+  const point = payload[0]?.payload as ProgressPoint | undefined;
+  if (!point) return null;
+  const diff = point.previous === null ? null : point.current - point.previous;
+  return (
+    <VizTooltip
+      title={formatDayFull(point.key)}
+      subtitle={`Halmozott ${metricLabel.toLowerCase()}`}
+      rows={[
+        {
+          key: "current",
+          label: "Idei időszak",
+          value: formatHuf(point.current),
+          color: color ?? VIZ.income,
+        },
+        ...(point.previous !== null
+          ? [
+              {
+                key: "previous",
+                label: baseLabel,
+                value: formatHuf(point.previous),
+                color: VIZ.axis,
+                dashed: true,
+              },
+            ]
+          : []),
+        ...(diff !== null
+          ? [
+              {
+                key: "diff",
+                label: diff >= 0 ? "Előny" : "Lemaradás",
+                value: formatHuf(Math.abs(diff)),
+                strong: true,
+              },
+            ]
+          : []),
+      ]}
+    />
+  );
+}
+
+export function SeasonProgressChart({
+  data,
+  color,
+  metricLabel,
+  baseLabel,
+}: {
+  data: ProgressPoint[];
+  color: string;
+  metricLabel: string;
+  baseLabel: string;
+}) {
+  const hasNegative = data.some(
+    (d) => d.current < 0 || (d.previous ?? 0) < 0,
+  );
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <AreaChart data={data} margin={{ top: 16, right: 12, left: 8, bottom: 0 }}>
+        <defs>
+          <linearGradient id="viz-progress" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity={0.28} />
+            <stop offset="100%" stopColor={color} stopOpacity={0.02} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid vertical={false} stroke={VIZ.grid} />
+        <XAxis
+          dataKey="key"
+          tickLine={false}
+          axisLine={false}
+          tickMargin={8}
+          minTickGap={44}
+          tick={AXIS_TICK}
+          tickFormatter={(value: string) => formatDay(value)}
+        />
+        <YAxis
+          tickLine={false}
+          axisLine={false}
+          width={84}
+          tickFormatter={MONEY_AXIS}
+          tick={AXIS_TICK}
+        />
+        <Tooltip
+          cursor={{ stroke: VIZ.axis, strokeDasharray: "4 4" }}
+          content={
+            <ProgressTooltip
+              metricLabel={metricLabel}
+              baseLabel={baseLabel}
+              color={color}
+            />
+          }
+        />
+        {hasNegative && <ReferenceLine y={0} stroke={VIZ.axis} />}
+        <Area
+          type="monotone"
+          dataKey="previous"
+          name={baseLabel}
+          stroke={VIZ.axis}
+          strokeWidth={2}
+          strokeDasharray="5 4"
+          fill="none"
+          connectNulls={false}
+          isAnimationActive={false}
+        />
+        <Area
+          type="monotone"
+          dataKey="current"
+          name="Idei időszak"
+          stroke={color}
+          strokeWidth={2.5}
+          fill="url(#viz-progress)"
+          isAnimationActive={false}
+        />
+      </AreaChart>
     </ResponsiveContainer>
   );
 }

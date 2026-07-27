@@ -497,7 +497,9 @@ export function perStore(
         share: totalIncome > 0 ? (totals.income / totalIncome) * 100 : 0,
       };
     })
-    .sort((a, b) => b.income - a.income);
+    // Eredmény szerint rangsorolunk: a legnagyobb bevétel még nem a
+    // legjobb bolt — a döntés az eredményen múlik.
+    .sort((a, b) => b.profit - a.profit);
 }
 
 export type WorkerStat = {
@@ -552,6 +554,276 @@ export function perWorker(data: StatsPayload): WorkerStat[] {
     })
     .filter((w) => w.shifts > 0 || w.wage > 0)
     .sort((a, b) => b.wage - a.wage);
+}
+
+/* ------------------------------------------------------------------ */
+/* Szezon állása, lendület, megállapítások                             */
+/* ------------------------------------------------------------------ */
+
+export type DaySum = {
+  income: number;
+  expense: number;
+  wage: number;
+  profit: number;
+  shifts: number;
+  days: number;
+};
+
+export function sumDays(days: DayBucket[]): DaySum {
+  return {
+    income: sum(days, (d) => d.income),
+    expense: sum(days, (d) => d.expense),
+    wage: sum(days, (d) => d.wage),
+    profit: sum(days, (d) => d.profit),
+    shifts: sum(days, (d) => d.shifts),
+    days: days.length,
+  };
+}
+
+/** Az utolsó `count` nyitott nap (a záró napból visszafelé). */
+export function lastActiveDays(daily: DayBucket[], count: number): DayBucket[] {
+  return daily.filter(isActiveDay).slice(-count);
+}
+
+/** Az azt megelőző `count` nyitott nap — a lendület méréséhez. */
+export function previousActiveDays(
+  daily: DayBucket[],
+  count: number,
+): DayBucket[] {
+  const active = daily.filter(isActiveDay);
+  return active.slice(Math.max(0, active.length - count * 2), Math.max(0, active.length - count));
+}
+
+export type ProgressPoint = {
+  key: string;
+  current: number;
+  previous: number | null;
+};
+
+/**
+ * Idei szezon kumulált görbéje a tavalyi mellé illesztve — nem naptári
+ * dátum, hanem *szezonnap* szerint, hogy a két év összemérhető legyen.
+ */
+export function buildSeasonProgress(
+  current: DayBucket[],
+  previous: DayBucket[],
+  metric: "profit" | "income",
+): ProgressPoint[] {
+  let runningCurrent = 0;
+  let runningPrevious = 0;
+  const hasPrevious = previous.length > 0;
+  return current.map((day, index) => {
+    runningCurrent += day[metric];
+    const prevDay = previous[index];
+    if (prevDay) runningPrevious += prevDay[metric];
+    return {
+      key: day.key,
+      current: runningCurrent,
+      previous: hasPrevious && index < previous.length ? runningPrevious : null,
+    };
+  });
+}
+
+export type InsightTone = "critical" | "warning" | "good" | "info";
+
+export type Insight = {
+  id: string;
+  tone: InsightTone;
+  title: string;
+  detail: string;
+};
+
+const TONE_ORDER: Record<InsightTone, number> = {
+  critical: 0,
+  warning: 1,
+  good: 2,
+  info: 3,
+};
+
+/**
+ * "Mire figyelj": a számokat helyetted olvassa ki. Minden szabály csak
+ * elegendő adat esetén szólal meg, és konkrét összeget mond.
+ */
+export function buildInsights(input: {
+  daily: DayBucket[];
+  totals: Totals;
+  compareTotals: Totals | null;
+  compareLabel: string;
+  weekdays: (GroupBucket & { avgProfit: number; incomePerShift: number })[];
+  stores: StoreStat[];
+  workers: WorkerStat[];
+  allStores: boolean;
+}): Insight[] {
+  const { daily, totals, compareTotals, compareLabel, weekdays, stores, workers } =
+    input;
+  const insights: Insight[] = [];
+
+  if (totals.activeDays === 0) {
+    return [
+      {
+        id: "no-data",
+        tone: "info",
+        title: "Nincs adat ebben az időszakban",
+        detail: "Válassz másik szezont vagy időszakot.",
+      },
+    ];
+  }
+
+  // 1. Hol tartunk a bázishoz képest
+  if (compareTotals && compareTotals.income > 0) {
+    const profitDelta = delta(totals.profit, compareTotals.profit);
+    if (profitDelta !== null) {
+      const better = profitDelta >= 0;
+      insights.push({
+        id: "vs-base",
+        tone: profitDelta >= 5 ? "good" : profitDelta <= -5 ? "warning" : "info",
+        title: `Az eredmény ${formatPercent(Math.abs(profitDelta), 0)}-kal a ${
+          better ? "bázis felett" : "bázis alatt"
+        } van`,
+        detail: `Ebben az időszakban ${formatHuf(totals.profit)}, ${compareLabel} ${formatHuf(
+          compareTotals.profit,
+        )}.`,
+      });
+    }
+  }
+
+  // 2. Lendület: utolsó 7 nyitott nap a megelőző héthez képest
+  const recent = lastActiveDays(daily, 7);
+  const before = previousActiveDays(daily, 7);
+  if (recent.length >= 4 && before.length >= 4) {
+    const recentAvg = sumDays(recent).income / recent.length;
+    const beforeAvg = sumDays(before).income / before.length;
+    const change = delta(recentAvg, beforeAvg);
+    if (change !== null && Math.abs(change) >= 15) {
+      insights.push({
+        id: "momentum",
+        tone: change > 0 ? "good" : "warning",
+        title: `Az elmúlt ${recent.length} nyitott nap átlaga ${formatPercent(
+          Math.abs(change),
+          0,
+        )}-kal ${change > 0 ? "jobb" : "gyengébb"} a megelőző hétnél`,
+        detail: `${formatHuf(recentAvg)} / nap a korábbi ${formatHuf(beforeAvg)} helyett.`,
+      });
+    }
+  }
+
+  // 3. Elszaladó bérhányad
+  const recent14 = lastActiveDays(daily, 14);
+  if (recent14.length >= 7 && totals.income > 0) {
+    const recentSum = sumDays(recent14);
+    if (recentSum.income > 0) {
+      const recentRatio = (recentSum.wage / recentSum.income) * 100;
+      if (recentRatio > totals.wageRatio + 6 && recentRatio > 20) {
+        insights.push({
+          id: "wage-ratio",
+          tone: "warning",
+          title: `A bérhányad az elmúlt ${recent14.length} nyitott napon ${formatPercent(recentRatio)}`,
+          detail: `A teljes időszak átlaga ${formatPercent(
+            totals.wageRatio,
+          )}. Érdemes ránézni a beosztásra.`,
+        });
+      }
+    }
+  }
+
+  // 4. Veszteséges hét napjai
+  const losing = weekdays.filter((d) => d.activeDays >= 3 && d.avgProfit < 0);
+  if (losing.length > 0) {
+    insights.push({
+      id: "losing-days",
+      tone: "critical",
+      title: `${losing.map((d) => d.label).join(", ")}: átlagosan veszteséges`,
+      detail: losing
+        .map(
+          (d) =>
+            `${d.label}: ${formatHuf(d.avgProfit)} / nyitott nap (${d.activeDays} nap)`,
+        )
+        .join(" · "),
+    });
+  }
+
+  // 5. Beosztás: melyik napon termel a legtöbbet egy műszak
+  const withShifts = weekdays.filter((d) => d.shifts >= 3);
+  if (withShifts.length >= 2) {
+    const best = withShifts.reduce((a, b) =>
+      b.incomePerShift > a.incomePerShift ? b : a,
+    );
+    const worst = withShifts.reduce((a, b) =>
+      b.incomePerShift < a.incomePerShift ? b : a,
+    );
+    if (best.incomePerShift > worst.incomePerShift * 1.4) {
+      insights.push({
+        id: "staffing",
+        tone: "info",
+        title: `${worst.label}on egy műszak feleannyit sem hoz, mint ${best.label}on`,
+        detail: `${best.label}: ${formatHuf(best.incomePerShift)} / műszak, ${worst.label}: ${formatHuf(
+          worst.incomePerShift,
+        )} / műszak.`,
+      });
+    }
+  }
+
+  // 6. Veszteséges vagy leszakadó bolt
+  if (input.allStores && stores.length > 1) {
+    const negative = stores.filter((s) => s.profit < 0);
+    if (negative.length > 0) {
+      insights.push({
+        id: "store-negative",
+        tone: "critical",
+        title: `${negative.map((s) => s.name).join(", ")}: veszteséges az időszakban`,
+        detail: negative
+          .map((s) => `${s.name}: ${formatHuf(s.profit)}`)
+          .join(" · "),
+      });
+    } else {
+      const active = stores.filter((s) => s.income > 0);
+      if (active.length > 1) {
+        const avgMargin =
+          active.reduce((acc, s) => acc + s.margin, 0) / active.length;
+        const weak = active.filter((s) => s.margin < avgMargin - 10);
+        if (weak.length > 0) {
+          insights.push({
+            id: "store-weak",
+            tone: "warning",
+            title: `${weak.map((s) => s.name).join(", ")} árrése elmarad a többitől`,
+            detail: `${weak
+              .map((s) => `${s.name}: ${formatPercent(s.margin)}`)
+              .join(" · ")} — strandátlag ${formatPercent(avgMargin)}.`,
+          });
+        }
+      }
+    }
+  }
+
+  // 7. Kint lévő pénz
+  const unpaidWorkers = workers.filter((w) => w.unpaid > 0);
+  if (totals.unpaidWage > 0) {
+    insights.push({
+      id: "unpaid",
+      tone: totals.unpaidWage > totals.wage * 0.4 ? "warning" : "info",
+      title: `${formatHuf(totals.unpaidWage)} bér függőben`,
+      detail: `${unpaidWorkers.length} dolgozónál: ${unpaidWorkers
+        .slice(0, 4)
+        .map((w) => `${w.name} (${formatHuf(w.unpaid)})`)
+        .join(", ")}${unpaidWorkers.length > 4 ? " …" : ""}`,
+    });
+  }
+
+  const advances = workers.reduce((acc, w) => acc + w.advanceBalance, 0);
+  if (advances > 0) {
+    insights.push({
+      id: "advances",
+      tone: "info",
+      title: `${formatHuf(advances)} nyitott előleg`,
+      detail: `Már kiadott pénz, amit a következő napibérek fognak lefedni (${
+        workers.filter((w) => w.advanceBalance > 0).length
+      } dolgozó).`,
+    });
+  }
+
+  return insights
+    .sort((a, b) => TONE_ORDER[a.tone] - TONE_ORDER[b.tone])
+    .slice(0, 6);
 }
 
 /** Kumulált eredmény- és befektetés-görbe (megtérülés követéshez). */
@@ -612,14 +884,18 @@ export function resolvePeriod(
 ): { from: string; to: string } {
   const today = todayKey();
   switch (preset) {
-    case "season":
-      return seasonRange(year);
+    case "season": {
+      const season = seasonRange(year);
+      return { from: season.from, to: capToToday(season.from, season.to) };
+    }
     case "last30":
       return { from: addDays(today, -29), to: today };
     case "last7":
       return { from: addDays(today, -6), to: today };
-    case "year":
-      return { from: `${year}-01-01`, to: `${year}-12-31` };
+    case "year": {
+      const from = `${year}-01-01`;
+      return { from, to: capToToday(from, `${year}-12-31`) };
+    }
     case "prevYear":
       return { from: `${year - 1}-01-01`, to: `${year - 1}-12-31` };
     case "all":
@@ -627,6 +903,21 @@ export function resolvePeriod(
     default:
       return custom;
   }
+}
+
+/**
+ * Folyó szezonnál a mai napig tart az időszak — különben a fél szezon állna
+ * szemben a tavalyi egésszel, és minden összehasonlítás hazudna.
+ */
+function capToToday(from: string, to: string): string {
+  const today = todayKey();
+  if (to <= today) return to;
+  return today >= from ? today : to;
+}
+
+/** Igaz, ha az időszak vége a mai nap (tehát még tart). */
+export function isToDate(range: { to: string }): boolean {
+  return range.to === todayKey();
 }
 
 /** Az összehasonlító időszak: ugyanaz a hossz közvetlenül előtte, vagy az előző év azonos szakasza. */
